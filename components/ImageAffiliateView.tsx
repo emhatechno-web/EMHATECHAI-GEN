@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { CharacterImageData, GeneratedImage, LanguageOption } from '../types';
-import { SparklesIcon, DownloadIcon } from './Icons';
+import { SparklesIcon, DownloadIcon, WandIcon } from './Icons';
 import { Spinner } from './common/Spinner';
 import { ImageLoadingSkeleton } from './common/ImageLoadingSkeleton';
-import { JsonDisplay } from './common/JsonDisplay';
 import { ImageUploader } from './common/ImageUploader';
+import { TextDisplay } from './common/TextDisplay';
+import { JsonDisplay } from './common/JsonDisplay';
 
 interface ImageAffiliateViewProps {
     baseImages: (CharacterImageData | null)[];
@@ -16,6 +17,8 @@ interface ImageAffiliateViewProps {
     onDownloadAll: () => void;
     onGenerateIdea: () => void;
     isGeneratingIdea: boolean;
+    scenario: string;
+    onScenarioChange: (scenario: string) => void;
     languages: LanguageOption[];
     selectedLanguage: string;
     onLanguageChange: (language: string) => void;
@@ -31,12 +34,37 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
     onDownloadAll,
     onGenerateIdea,
     isGeneratingIdea,
+    scenario,
+    onScenarioChange,
     languages,
     selectedLanguage,
     onLanguageChange,
 }) => {
-    const isReadyToGenerate = baseImages[0] && baseImages[1];
+    const isReadyToGenerate = baseImages[0] && baseImages[1] && scenario.trim() !== '';
     const hasImages = generatedImages.some(img => img && img.src && !img.isLoading);
+    const [fullNarration, setFullNarration] = useState('');
+
+    useEffect(() => {
+        if (videoJsons && videoJsons.length > 0) {
+            try {
+                const narration = videoJsons
+                    .map(jsonStr => {
+                        const parsed = JSON.parse(jsonStr);
+                        return parsed.spoken_script;
+                    })
+                    .filter(Boolean)
+                    .map((script, index) => `Adegan ${index + 1}:\n${script}`)
+                    .join('\n\n');
+                setFullNarration(narration);
+            } catch (error) {
+                console.error("Gagal mem-parsing JSON video untuk narasi:", error);
+                setFullNarration('');
+            }
+        } else {
+            setFullNarration('');
+        }
+    }, [videoJsons]);
+
 
     return (
         <div className="animate-fade-in">
@@ -56,6 +84,36 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
                                 onImageChange={(newImage) => onBaseImageChange(newImage, 1)}
                                 label="Gambar Produk"
                             />
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Tulis Skenario UGC</p>
+                                    <button
+                                        type="button"
+                                        onClick={onGenerateIdea}
+                                        disabled={!baseImages[0] || !baseImages[1] || isGeneratingIdea}
+                                        className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                    >
+                                        {isGeneratingIdea ? (
+                                            <>
+                                                <Spinner className="h-4 w-4" />
+                                                Mencari ide...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <WandIcon className="h-4 w-4" />
+                                                Dapatkan Ide Ajaib
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={scenario}
+                                    onChange={(e) => onScenarioChange(e.target.value)}
+                                    rows={3}
+                                    className="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg p-3 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 placeholder-slate-400 dark:placeholder-slate-500 transition-colors"
+                                    placeholder="Contoh: Saya menemukan produk luar biasa ini yang mengubah rutinitas pagi saya..."
+                                />
+                            </div>
                              <div>
                                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Bahasa Prompt Video</p>
                                 <div className="relative">
@@ -112,6 +170,15 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
                             Unduh Gambar
                         </button>
                     </div>
+
+                    {fullNarration && (
+                        <TextDisplay
+                            label="Narasi Teks Lengkap (untuk ElevenLabs)"
+                            text={fullNarration}
+                            copyButtonText="Salin Narasi"
+                        />
+                    )}
+
                      <div className="flex flex-col gap-6 overflow-y-auto max-h-[70vh] pr-2">
                         {generatedImages.map((img, index) => (
                              <div key={img?.id || index}>
@@ -125,7 +192,7 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
                                         )}
                                     </div>
                                     <div className="flex flex-col">
-                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Prompt Video</p>
+                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Prompt Video (JSON)</p>
                                          {isGenerating && !videoJsons[index] ? (
                                             <div className="bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400 p-4 rounded-lg h-full border border-slate-200 dark:border-slate-700">Menghasilkan...</div>
                                          ) : videoJsons[index] ? (

@@ -4,6 +4,7 @@ import { PlusIcon, SparklesIcon, XIcon, WandIcon, LandscapeIcon, PortraitIcon } 
 import { Spinner } from './common/Spinner';
 import { CharacterCreator } from './CharacterCreator';
 import { ToggleButton } from './common/ToggleButton';
+import { ImageUploader } from './common/ImageUploader';
 
 interface StoryWizardProps {
   genres: Genre[];
@@ -26,6 +27,8 @@ interface StoryWizardProps {
   characterText: string;
   characterGender: Gender;
   onCharacterGenderChange: (gender: Gender) => void;
+  animalImage: CharacterImageData | null;
+  onAnimalImageChange: (imageData: CharacterImageData | null) => void;
   imageAspectRatio: AspectRatio;
   onImageAspectRatioChange: (ratio: AspectRatio) => void;
 }
@@ -51,6 +54,8 @@ export const StoryWizard: React.FC<StoryWizardProps> = ({
   characterText,
   characterGender,
   onCharacterGenderChange,
+  animalImage,
+  onAnimalImageChange,
   imageAspectRatio,
   onImageAspectRatioChange,
 }) => {
@@ -84,6 +89,44 @@ export const StoryWizard: React.FC<StoryWizardProps> = ({
           onGenderChange={onCharacterGenderChange}
         />
 
+        <div className="mt-4">
+          <ImageUploader
+            image={animalImage}
+            onImageChange={onAnimalImageChange}
+            label="Unggah Gambar Hewan Peliharaan (Opsional)"
+          />
+        </div>
+
+        <div className="mt-4">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Pilih Rasio Aspek Gambar</p>
+            <div className="flex gap-2">
+                <button
+                    type="button"
+                    onClick={() => onImageAspectRatioChange('16:9')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 border flex items-center justify-center gap-2 w-full ${
+                        imageAspectRatio === '16:9' 
+                            ? 'bg-cyan-600 text-white border-cyan-600 shadow'
+                            : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 dark:text-slate-300'
+                    }`}
+                >
+                    <LandscapeIcon className="h-5 w-5" />
+                    <span>Landscape (16:9)</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onImageAspectRatioChange('9:16')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 border flex items-center justify-center gap-2 w-full ${
+                        imageAspectRatio === '9:16' 
+                            ? 'bg-cyan-600 text-white border-cyan-600 shadow'
+                            : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 dark:text-slate-300'
+                    }`}
+                >
+                    <PortraitIcon className="h-5 w-5" />
+                    <span>Portrait (9:16)</span>
+                </button>
+            </div>
+        </div>
+
         <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg min-h-[200px] border border-slate-300 dark:border-slate-600 flex-grow flex flex-col focus-within:ring-2 focus-within:ring-cyan-500 transition-shadow mt-4 transition-colors duration-300">
             <textarea
                 value={storyText}
@@ -93,26 +136,6 @@ export const StoryWizard: React.FC<StoryWizardProps> = ({
             />
         </div>
         
-        <div className="mt-6">
-            <h3 className="text-xl font-semibold text-cyan-700 dark:text-cyan-400 mb-2">Langkah 3: Pilih Mode Gambar</h3>
-            <div className="grid grid-cols-2 gap-4">
-                <AspectRatioButton
-                    label="Landscape"
-                    value="16:9"
-                    icon={<LandscapeIcon className="h-8 w-8 mx-auto mb-1 text-slate-500 dark:text-slate-400 group-hover:text-cyan-600 transition-colors"/>}
-                    active={imageAspectRatio === '16:9'}
-                    onClick={() => onImageAspectRatioChange('16:9')}
-                />
-                <AspectRatioButton
-                    label="Portrait"
-                    value="9:16"
-                    icon={<PortraitIcon className="h-8 w-8 mx-auto mb-1 text-slate-500 dark:text-slate-400 group-hover:text-cyan-600 transition-colors"/>}
-                    active={imageAspectRatio === '9:16'}
-                    onClick={() => onImageAspectRatioChange('9:16')}
-                />
-            </div>
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
             <button
                 type="button"
@@ -189,25 +212,3 @@ export const StoryWizard: React.FC<StoryWizardProps> = ({
     </div>
   );
 };
-
-const AspectRatioButton: React.FC<{
-    label: string;
-    value: string;
-    icon: React.ReactNode;
-    active: boolean;
-    onClick: () => void;
-}> = ({ label, value, icon, active, onClick }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        className={`group p-4 rounded-lg border-2 transition-all duration-200 text-center ${
-            active
-                ? 'bg-cyan-50 dark:bg-cyan-900/50 border-cyan-500 shadow-md'
-                : 'bg-white hover:bg-slate-50 border-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600'
-        }`}
-    >
-        {icon}
-        <p className={`text-sm font-semibold ${active ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-600 dark:text-slate-300'}`}>{label}</p>
-        <p className={`text-xs ${active ? 'text-cyan-500' : 'text-slate-400 dark:text-slate-500'}`}>{value}</p>
-    </button>
-);
