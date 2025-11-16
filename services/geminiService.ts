@@ -60,7 +60,8 @@ export async function getInitialIdeas(genre: string, count: number): Promise<str
                           type: Type.STRING
                       }
                   }
-              }
+              },
+              required: ["ideas"],
           }
       }
     });
@@ -102,7 +103,8 @@ export async function getNewIdeasFromText(genre: string, storyText: string, coun
                             type: Type.ARRAY,
                             items: { type: Type.STRING }
                         }
-                    }
+                    },
+                    required: ["ideas"],
                 }
             }
         });
@@ -159,30 +161,48 @@ export async function generateCharacterProfile(story: string, gender: Gender): P
 }
 
 /**
- * Generates a list of image prompts from the story.
+ * Splits a story into scenes, providing a narration and an image prompt for each.
  */
-export async function generateImagePrompts(story: string): Promise<string[]> {
+export async function generateStoryScenes(story: string): Promise<{ narration: string; imagePrompt: string }[]> {
     return retry(async () => {
         const client = getAiClient();
         const response = await client.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Bagi cerita berikut menjadi 6-8 adegan visual utama. Untuk setiap adegan, tulis prompt gambar yang ringkas dan deskriptif yang menangkap momen kunci. Prompt harus cocok untuk model teks-ke-gambar gaya sinematik. Kembalikan HANYA objek JSON yang valid dengan kunci "prompts" yang berisi daftar string prompt.\n\nCerita:\n---\n${story}`,
+            contents: `Bagi cerita berikut menjadi paragraf naratif yang bermakna. Jumlah paragraf harus sesuai dengan alur cerita. Untuk setiap paragraf, berikan dua hal:
+1.  **narration**: Teks lengkap dari paragraf itu.
+2.  **imagePrompt**: Prompt gambar yang ringkas dan deskriptif yang secara visual menangkap esensi paragraf itu.
+
+Kembalikan HANYA objek JSON yang valid dengan kunci "scenes" yang berisi array objek. Setiap objek dalam array harus memiliki kunci "narration" dan "imagePrompt".
+
+Cerita:
+---
+${story}`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        prompts: {
+                        scenes: {
                             type: Type.ARRAY,
-                            items: { type: Type.STRING }
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    narration: { type: Type.STRING },
+                                    imagePrompt: { type: Type.STRING }
+                                },
+                                required: ["narration", "imagePrompt"]
+                            }
                         }
-                    }
+                    },
+                    required: ["scenes"]
                 }
             }
         });
         const json = JSON.parse(response.text);
-        if (!json.prompts) throw new Error("Struktur JSON tidak valid yang diterima untuk prompt gambar.");
-        return json.prompts;
+        if (!json.scenes || !Array.isArray(json.scenes)) {
+            throw new Error("Gagal membagi cerita menjadi adegan. Struktur JSON tidak valid.");
+        }
+        return json.scenes;
     });
 }
 
@@ -200,7 +220,7 @@ function base64ToPart(imageData: CharacterImageData) {
 /**
  * Generates a single image based on a prompt and character info.
  */
-export async function generateImage(prompt: string, characterInfo: string | CharacterImageData | CharacterImageData[], aspectRatio: AspectRatio, gender: Gender): Promise<string> {
+export async function generateImage(prompt: string, characterInfo: string | CharacterImageData | CharacterImageData[], aspectRatio: AspectRatio, gender: Gender, promptPrefix?: string): Promise<string> {
    return retry(async () => {
         const client = getAiClient();
         const genderText = gender === 'unspecified' ? '' : `, ${gender}`;
@@ -236,9 +256,13 @@ Pastikan karakter utama konsisten di semua gambar.`;
             if (imageInfos.length > 0 && imageInfos[0]?.base64) {
                 const imageParts = imageInfos.map(info => base64ToPart(info));
                 
-                let textPartText = `Cocokkan karakter dari gambar. Letakkan karakter dalam adegan ini: ${prompt}. PENTING: Gambar yang dihasilkan HARUS memiliki rasio aspek ${aspectRatio} murni tanpa pemotongan (cropping) atau letterboxing.`;
-                if (imageInfos.length > 1) { // Affiliate mode specific prompt
-                    textPartText = `Gunakan gambar referensi ini (gambar pertama adalah karakter, gambar kedua adalah produk) untuk konteks. Buat gambar baru berdasarkan prompt ini: ${prompt}. Jaga konsistensi karakter dan produk. PENTING: Gambar yang dihasilkan HARUS memiliki rasio aspek 9:16 (potret) murni tanpa pemotongan (cropping) atau letterboxing.`
+                let textPartText;
+                // Specific check for affiliate (2 images, no prefix)
+                if (imageInfos.length > 1 && !promptPrefix) {
+                    textPartText = `Gunakan gambar referensi ini (gambar pertama adalah karakter, gambar kedua adalah produk) untuk konteks. Buat gambar baru berdasarkan prompt ini: ${prompt}. Jaga konsistensi karakter dan produk. PENTING: Gambar yang dihasilkan HARUS memiliki rasio aspek ${aspectRatio} (potret) murni tanpa pemotongan (cropping) atau letterboxing.`
+                } else {
+                    const basePrompt = promptPrefix || 'Cocokkan karakter dari gambar.';
+                    textPartText = `${basePrompt} Letakkan dalam adegan ini: ${prompt}. PENTING: Gambar yang dihasilkan HARUS memiliki rasio aspek ${aspectRatio} murni tanpa pemotongan (cropping) atau letterboxing.`;
                 }
                 
                 const textPart = { text: textPartText };
@@ -287,20 +311,20 @@ export async function generateAffiliateScenario(characterImage: CharacterImageDa
 /**
  * Generates a package of affiliate marketing content.
  */
-export async function generateAffiliatePackage(characterImage: CharacterImageData, productImage: CharacterImageData, language: string): Promise<{ images: string[], videoJson: object[] }> {
+export async function generateAffiliatePackage(characterImage: CharacterImageData, productImage: CharacterImageData, scenario: string, language: string): Promise<{ images: string[], videoJson: object[] }> {
     return retry(async () => {
         const client = getAiClient();
         
-        // Step 1: Generate the plan (image prompts and video JSON)
         const imageParts = [base64ToPart(characterImage), base64ToPart(productImage)];
         const textPart = {
-            text: `Anda adalah seorang sutradara virtual dan ahli konten UGC (User-Generated Content). Tugas Anda adalah membuat paket konten yang kohesif untuk video promosi pendek.
+            text: `Anda adalah sutradara virtual yang ahli dalam membuat prompt untuk model video generatif seperti Veo 3. Tugas Anda adalah membuat paket konten untuk video promosi pendek bergaya UGC.
 
-Berdasarkan aset berikut:
+Berdasarkan aset dan skenario berikut:
 - Gambar Karakter (gambar pertama)
 - Gambar Produk (gambar kedua)
+- Skenario: "${scenario}"
 
-Buat paket konten yang saling berhubungan. Anda HARUS mengembalikan objek JSON yang valid dengan dua kunci: "image_prompts" dan "video_scripts". Semua teks yang dihasilkan (prompt, deskripsi, skrip) HARUS dalam bahasa ${language}.
+Anda HARUS mengembalikan objek JSON yang valid dengan dua kunci: "image_prompts" dan "video_prompts_veo". Semua teks yang dihasilkan (prompt, skrip) HARUS dalam bahasa ${language}.
 
 1.  **"image_prompts"**: Ini harus berupa sebuah array berisi **TEPAT 7 string prompt gambar**. Ketujuh prompt ini harus mendeskripsikan urutan visual dari sebuah video UGC klasik dan secara alami menghasilkan gambar vertikal yang pas dalam rasio aspek 9:16:
     *   Prompt 1 (Hook): Shot yang menarik perhatian, menampilkan karakter dengan ekspresi penasaran atau bersemangat terhadap produk.
@@ -312,7 +336,10 @@ Buat paket konten yang saling berhubungan. Anda HARUS mengembalikan objek JSON y
     *   Prompt 7 (Call to Action): Shot akhir karakter memegang produk, menunjuk ke arah teks overlay, atau memberikan acungan jempol.
     Pastikan karakter dan produk konsisten di semua prompt.
 
-2.  **"video_scripts"**: Ini harus berupa sebuah array berisi **TEPAT 7 objek JSON**. Setiap objek harus sesuai dengan prompt gambar pada indeks yang sama dan mendeskripsikan klip video pendek (sekitar 8 detik) yang saling menyambung. Setiap objek hanya akan berisi deskripsi adegan dan skrip sulih suara (voiceover_script). Skrip sulih suara harus pendek, jelas, dan mudah diucapkan, dan ini akan menjadi satu-satunya audio, menghasilkan video yang bersih. Jangan sertakan instruksi untuk musik latar, efek suara, atau teks overlay. Semua nilai teks dalam objek ini HARUS dalam bahasa ${language}.`
+2.  **"video_prompts_veo"**: Ini adalah array yang berisi **TEPAT 7 objek JSON**, satu untuk setiap prompt video. Setiap objek HARUS diformat untuk model **Veo 3** dan merepresentasikan klip video berdurasi **8 detik**. Setiap objek harus memiliki kunci berikut:
+    *   \`"video_prompt"\`: Deskripsi visual yang sangat detail untuk Veo 3, menjelaskan aksi karakter, ekspresi, dan sudut kamera saat me-review produk.
+    *   \`"spoken_script"\`: Teks yang diucapkan oleh karakter. Ini adalah **satu-satunya audio** dalam klip.
+    **ATURAN KETAT**: Video yang dihasilkan dari prompt ini **TIDAK BOLEH** memiliki teks di layar, musik, atau efek suara. Cukup karakter yang berbicara me-review produk. Semua teks dalam JSON harus dalam bahasa ${language}.`
         };
 
         const planResponse = await client.models.generateContent({
@@ -327,44 +354,43 @@ Buat paket konten yang saling berhubungan. Anda HARUS mengembalikan objek JSON y
                             type: Type.ARRAY,
                             items: { type: Type.STRING }
                         },
-                        video_scripts: {
+                        video_prompts_veo: {
                            type: Type.ARRAY,
                            items: {
                                 type: Type.OBJECT,
                                 properties: {
-                                    scene_description: {
+                                    video_prompt: {
                                         type: Type.STRING,
-                                        description: "Deskripsi visual adegan."
+                                        description: "Deskripsi visual detail untuk prompt video Veo 3."
                                     },
-                                    voiceover_script: {
+                                    spoken_script: {
                                         type: Type.STRING,
-                                        description: "Skrip sulih suara yang pendek dan jelas untuk dibacakan, cocok untuk klip 8 detik. Maksimal 2 kalimat. Ini adalah satu-satunya audio."
+                                        description: "Skrip yang diucapkan oleh karakter. Ini adalah satu-satunya audio."
                                     }
                                 },
-                                required: ["scene_description", "voiceover_script"],
+                                required: ["video_prompt", "spoken_script"],
                            }
                         }
                     },
-                    required: ["image_prompts", "video_scripts"]
+                    required: ["image_prompts", "video_prompts_veo"]
                 }
             }
         });
 
         const plan = JSON.parse(planResponse.text);
-        if (!plan.image_prompts || !plan.video_scripts || plan.image_prompts.length !== 7 || plan.video_scripts.length !== 7) {
+        if (!plan.image_prompts || !plan.video_prompts_veo || plan.image_prompts.length !== 7 || plan.video_prompts_veo.length !== 7) {
             throw new Error("Gagal menghasilkan rencana konten yang valid (7 gambar dan 7 skrip) dari AI.");
         }
 
         const imagePrompts: string[] = plan.image_prompts;
         
-        // Step 2: Generate the 7 images based on the new prompts, using the original images as reference.
         const imagePromises = imagePrompts.map(prompt => 
             generateImage(prompt, [characterImage, productImage], '9:16', 'unspecified')
         );
 
         const images = await Promise.all(imagePromises);
 
-        return { images, videoJson: plan.video_scripts };
+        return { images, videoJson: plan.video_prompts_veo };
     });
 }
 
@@ -406,102 +432,5 @@ export async function generateStoryAudio(narration: string, voice: string): Prom
             return audioPart.inlineData.data;
         }
         throw new Error("Gagal membuat audio. Respons tidak berisi data audio.");
-    });
-}
-
-
-/**
- * Generates the full video from story and images.
- */
-export async function generateVideoFromStory(story: string, images: GeneratedImage[], aspectRatio: AspectRatio): Promise<string | undefined> {
-    return retry(async () => {
-        const client = getAiClient(); // Re-initialize for video key
-        const validImages = images.filter(img => img.src).map(img => ({
-            image: {
-                imageBytes: img.src!.split(',')[1],
-                mimeType: 'image/png'
-            }
-        }));
-
-        if (validImages.length === 0) throw new Error("Tidak ada gambar yang valid untuk membuat video.");
-
-        let operation = await client.models.generateVideos({
-            model: 'veo-3.1-fast-generate-preview',
-            prompt: `Buat video pendek sinematik berdasarkan cerita ini: ${story}. Gunakan gambar yang disediakan sebagai referensi visual utama untuk adegan.`,
-            image: validImages[0].image,
-            config: {
-                numberOfVideos: 1,
-                resolution: '720p',
-                aspectRatio: aspectRatio,
-            }
-        });
-
-        while (!operation.done) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            operation = await client.operations.getVideosOperation({ operation: operation });
-        }
-
-        return operation.response?.generatedVideos?.[0]?.video?.uri;
-    });
-}
-
-/**
- * Splits the story into narrations for each scene/image.
- */
-export async function splitStoryIntoSceneNarrations(story: string, imagePrompts: string[]): Promise<string[]> {
-    return retry(async () => {
-        const client = getAiClient();
-        const response = await client.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Cocokkan cerita berikut dengan daftar prompt gambar adegan ini. Untuk setiap prompt, ekstrak bagian narasi yang sesuai dari cerita. Setiap narasi harus pendek dan hanya mendeskripsikan apa yang terjadi dalam adegan itu. Kembalikan HANYA objek JSON yang valid dengan kunci "narrations" yang berisi daftar string narasi yang sama urutannya dengan prompt.\n\nCerita:\n---\n${story}\n\nPrompts:\n---\n${JSON.stringify(imagePrompts)}`,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        narrations: {
-                            type: Type.ARRAY,
-                            items: { type: Type.STRING }
-                        }
-                    }
-                }
-            }
-        });
-        const json = JSON.parse(response.text);
-        if (!json.narrations || json.narrations.length !== imagePrompts.length) {
-            throw new Error("Gagal menyelaraskan narasi dengan adegan.");
-        }
-        return json.narrations;
-    });
-}
-
-/**
- * Generates a video for a single scene (image + narration).
- */
-export async function generateVideoForScene(narration: string, image: GeneratedImage, aspectRatio: AspectRatio): Promise<string | undefined> {
-     return retry(async () => {
-        const client = getAiClient();
-        if (!image.src) throw new Error("Gambar sumber tidak valid.");
-
-        let operation = await client.models.generateVideos({
-            model: 'veo-3.1-fast-generate-preview',
-            prompt: `Buat klip video pendek dan dinamis berdasarkan deskripsi ini: ${narration}.`,
-            image: {
-                imageBytes: image.src.split(',')[1],
-                mimeType: 'image/png'
-            },
-            config: {
-                numberOfVideos: 1,
-                resolution: '720p',
-                aspectRatio: aspectRatio,
-            }
-        });
-
-        while (!operation.done) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            operation = await client.operations.getVideosOperation({ operation: operation });
-        }
-
-        return operation.response?.generatedVideos?.[0]?.video?.uri;
     });
 }
