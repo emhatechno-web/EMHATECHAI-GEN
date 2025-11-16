@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JSZip from 'jszip';
 import { GENRES, INITIAL_IDEAS_COUNT, VOICE_OPTIONS, UGC_LANGUAGES } from './constants';
-import { initializeAiClient, getInitialIdeas, getNewIdea, generateFullStory, generateCharacterProfile, generateImagePrompts, generateImage, polishStory, getNewIdeasFromText, generateStoryAudio, extractNarrationFromStory, generateVideoFromStory, splitStoryIntoSceneNarrations, generateVideoForScene, generateAffiliatePackage, generateAffiliateScenario } from './services/geminiService';
+import { initializeAiClient, getInitialIdeas, getNewIdea, generateFullStory, generateCharacterProfile, generateImage, polishStory, getNewIdeasFromText, generateStoryAudio, extractNarrationFromStory, generateAffiliatePackage, generateAffiliateScenario, generateStoryScenes } from './services/geminiService';
 import { Genre, StoryIdea, GeneratedImage, AspectRatio, View, CharacterImageData, Gender, Voice } from './types';
 import { Header } from './components/Header';
 import { StoryWizard } from './components/StoryWizard';
@@ -11,6 +11,7 @@ import { ImageAffiliateView } from './components/ImageAffiliateView';
 import { AboutView } from './components/AboutView';
 import { pcmToWavBlob, decodeBase64 } from './utils/audio';
 import { TabButton } from './components/common/TabButton';
+import { UnlimitedVeoView } from './components/UnlimitedVeoView';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('wizard');
@@ -25,18 +26,16 @@ const App: React.FC = () => {
   const [storyText, setStoryText] = useState<string>('');
   const [characterText, setCharacterText] = useState<string>('');
   const [characterImage, setCharacterImage] = useState<CharacterImageData | null>(null);
+  const [animalImage, setAnimalImage] = useState<CharacterImageData | null>(null);
   const [characterGender, setCharacterGender] = useState<Gender>('unspecified');
-  const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('16:9');
+  const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('9:16');
   
   // Storybook State
   const [fullStory, setFullStory] = useState<string>('');
   const [imagePrompts, setImagePrompts] = useState<string[]>([]);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<Voice>(VOICE_OPTIONS[0].value);
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [sceneNarrations, setSceneNarrations] = useState<string[]>([]);
-  const [generatedSceneVideos, setGeneratedSceneVideos] = useState<Map<string, string>>(new Map());
-  const [generatingSceneVideoIds, setGeneratingSceneVideoIds] = useState<Set<string>>(new Set());
 
   // Image Affiliate State
   const [affiliateImages, setAffiliateImages] = useState<(CharacterImageData | null)[]>([null, null]);
@@ -47,12 +46,10 @@ const App: React.FC = () => {
   const [isGeneratingAffiliateIdea, setIsGeneratingAffiliateIdea] = useState<boolean>(false);
   const [affiliateLanguage, setAffiliateLanguage] = useState<string>(UGC_LANGUAGES[0].value);
 
-
   // Global Loading/Error State
   const [isLoadingIdeas, setIsLoadingIdeas] = useState<boolean>(true);
   const [isGeneratingStory, setIsGeneratingStory] = useState<boolean>(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState<boolean>(false);
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState<boolean>(false);
   const [isPolishing, setIsPolishing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -173,9 +170,6 @@ const App: React.FC = () => {
     setFullStory('');
     setGeneratedImages([]);
     setImagePrompts([]);
-    setGeneratedVideoUrl(null);
-    setGeneratedSceneVideos(new Map());
-    setGeneratingSceneVideoIds(new Set());
     setSceneNarrations([]);
     setActiveView('wizard');
   };
@@ -186,13 +180,28 @@ const App: React.FC = () => {
     setIsApiKeyModalOpen(false);
   };
 
+  const getStoryImagePromptPrefix = useCallback(() => {
+      let prefix = '';
+      if (characterImage) {
+          prefix += 'Gunakan gambar pertama sebagai referensi untuk karakter utama. ';
+      }
+      if (animalImage) {
+          if (characterImage) {
+              prefix += 'Gunakan gambar kedua sebagai referensi untuk hewan peliharaannya. ';
+          } else {
+              prefix += 'Gunakan gambar sebagai referensi untuk hewan peliharaan. ';
+          }
+      }
+      return prefix;
+  }, [characterImage, animalImage]);
+
   const handleGenerateStory = async () => {
     if (!storyText.trim()) {
       setError('Silakan tulis cerita Anda terlebih dahulu.');
       return;
     }
-    if (!characterImage && !characterText.trim()) {
-      setError('Silakan deskripsikan karakter Anda atau unggah gambar.');
+    if (!characterImage && !characterText.trim() && !animalImage) {
+      setError('Silakan deskripsikan karakter Anda atau unggah gambar karakter/hewan.');
       return;
     }
     setIsGeneratingStory(true);
@@ -200,23 +209,27 @@ const App: React.FC = () => {
     setFullStory('');
     setGeneratedImages([]);
     setImagePrompts([]);
-    setGeneratedVideoUrl(null);
-    setGeneratedSceneVideos(new Map());
-    setGeneratingSceneVideoIds(new Set());
     setSceneNarrations([]);
 
     try {
       const story = await generateFullStory(storyText, selectedGenre.value, characterGender);
-      setFullStory(story);
-
+      
       let characterProfile = characterText;
       if (!characterImage && !characterText) {
           characterProfile = await generateCharacterProfile(story, characterGender);
           setCharacterText(characterProfile);
       }
       
-      const prompts = await generateImagePrompts(story);
+      const scenes = await generateStoryScenes(story);
+      const prompts = scenes.map(s => s.imagePrompt);
+      const narrations = scenes.map(s => s.narration);
+      
+      const storyFromScenes = narrations.join('\n\n');
+      setFullStory(storyFromScenes);
+
       setImagePrompts(prompts);
+      setSceneNarrations(narrations);
+
       setActiveView('storybook');
       await handleGenerateImages(prompts, characterProfile, characterGender);
 
@@ -248,8 +261,13 @@ const App: React.FC = () => {
   };
 
   const handleGenerateImages = async (prompts: string[], characterProfile: string, gender: Gender) => {
-      const characterInfo = characterImage ?? characterProfile;
-      if (!prompts || prompts.length === 0 || !characterInfo) {
+      const imageAssets: CharacterImageData[] = [];
+      if (characterImage) imageAssets.push(characterImage);
+      if (animalImage) imageAssets.push(animalImage);
+
+      const characterInfoForApi = imageAssets.length > 0 ? imageAssets : characterProfile;
+
+      if (!prompts || prompts.length === 0 || (!characterProfile && imageAssets.length === 0)) {
         setError('Informasi cerita atau karakter tidak lengkap untuk membuat gambar.');
         return;
       }
@@ -260,8 +278,9 @@ const App: React.FC = () => {
       setGeneratedImages(initialImages);
 
       try {
+          const promptPrefix = getStoryImagePromptPrefix();
           const imagePromises = initialImages.map(img => 
-              generateImage(img.prompt, characterInfo, imageAspectRatio, gender)
+              generateImage(img.prompt, characterInfoForApi, imageAspectRatio, gender, promptPrefix)
           );
           const resolvedImages = await Promise.all(imagePromises);
           
@@ -277,15 +296,20 @@ const App: React.FC = () => {
   };
   
   const handleRegenerateImage = async (imageToRegen: GeneratedImage) => {
-    const characterInfo = characterImage ?? characterText;
-    if (!characterInfo) return;
+    const imageAssets: CharacterImageData[] = [];
+    if (characterImage) imageAssets.push(characterImage);
+    if (animalImage) imageAssets.push(animalImage);
+
+    const characterInfo = imageAssets.length > 0 ? imageAssets : characterText;
+    if ((typeof characterInfo === 'string' && !characterInfo.trim()) && imageAssets.length === 0) return;
 
     setGeneratedImages(current => current.map(img => 
       img.id === imageToRegen.id ? { ...img, isLoading: true } : img
     ));
 
     try {
-      const newSrc = await generateImage(imageToRegen.prompt, characterInfo, imageAspectRatio, characterGender);
+      const promptPrefix = getStoryImagePromptPrefix();
+      const newSrc = await generateImage(imageToRegen.prompt, characterInfo, imageAspectRatio, characterGender, promptPrefix);
       setGeneratedImages(current => current.map(img => 
         img.id === imageToRegen.id ? { ...img, src: newSrc, isLoading: false } : img
       ));
@@ -329,106 +353,6 @@ const App: React.FC = () => {
       } finally {
         setIsGeneratingAudio(false);
       }
-  };
-
-  const handleGenerateVideo = async () => {
-    const firstImage = generatedImages.find(img => img.src && !img.isLoading);
-    if (!fullStory || !firstImage) {
-        setError("Cerita lengkap dan setidaknya satu gambar diperlukan untuk membuat video.");
-        return;
-    }
-
-    try {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-            await window.aistudio.openSelectKey();
-        }
-
-        setIsGeneratingVideo(true);
-        setGeneratedVideoUrl(null);
-        setError(null);
-
-        const videoUri = await generateVideoFromStory(fullStory, generatedImages, imageAspectRatio);
-
-        if (!videoUri) {
-            throw new Error("Gagal mendapatkan URI video dari API.");
-        }
-        
-        const videoResponse = await fetch(`${videoUri}&key=${process.env.API_KEY}`);
-        if (!videoResponse.ok) {
-            throw new Error(`Gagal mengunduh video: ${videoResponse.statusText}`);
-        }
-        const videoBlob = await videoResponse.blob();
-        const videoUrl = URL.createObjectURL(videoBlob);
-        setGeneratedVideoUrl(videoUrl);
-
-    } catch (err: any) {
-        console.error("Gagal membuat video:", err);
-        let errorMessage = `Gagal membuat video: ${err instanceof Error ? err.message : String(err)}`;
-        
-        if (err.message && err.message.includes("Requested entity was not found.")) {
-             errorMessage = "Kunci API Video tidak valid. Silakan pilih kunci API yang valid dari dialog.";
-             await window.aistudio.openSelectKey();
-        }
-
-        setError(errorMessage);
-        setGeneratedVideoUrl(null);
-    } finally {
-        setIsGeneratingVideo(false);
-    }
-  };
-
-  const handleGenerateVideoForScene = async (imageToProcess: GeneratedImage) => {
-    if (!fullStory || !imageToProcess.src) {
-      setError("Cerita dan gambar adegan diperlukan untuk membuat video.");
-      return;
-    }
-
-    try {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-            await window.aistudio.openSelectKey();
-        }
-
-        setGeneratingSceneVideoIds(prev => new Set(prev).add(imageToProcess.id));
-        setError(null);
-        
-        let narrations = sceneNarrations;
-        if (narrations.length === 0 && imagePrompts.length > 0) {
-            narrations = await splitStoryIntoSceneNarrations(fullStory, imagePrompts);
-            setSceneNarrations(narrations);
-        }
-        
-        const imageIndex = generatedImages.findIndex(img => img.id === imageToProcess.id);
-        if (imageIndex === -1 || !narrations[imageIndex]) {
-            throw new Error(`Tidak dapat menemukan narasi untuk adegan ${imageIndex + 1}.`);
-        }
-        const narration = narrations[imageIndex];
-
-        const videoUri = await generateVideoForScene(narration, imageToProcess, imageAspectRatio);
-
-        if (!videoUri) throw new Error("API tidak mengembalikan URI video.");
-        const videoResponse = await fetch(`${videoUri}&key=${process.env.API_KEY}`);
-        if (!videoResponse.ok) throw new Error(`Gagal mengunduh video: ${videoResponse.statusText}`);
-        const videoBlob = await videoResponse.blob();
-        const videoUrl = URL.createObjectURL(videoBlob);
-
-        setGeneratedSceneVideos(prev => new Map(prev).set(imageToProcess.id, videoUrl));
-    } catch (err: any) {
-        console.error(`Gagal membuat video untuk adegan ${imageToProcess.id}:`, err);
-        let errorMessage = `Gagal membuat video: ${err instanceof Error ? err.message : String(err)}`;
-        if (err.message && err.message.includes("Requested entity was not found.")) {
-             errorMessage = "Kunci API Video tidak valid. Silakan pilih kunci API yang valid dari dialog.";
-             await window.aistudio.openSelectKey();
-        }
-        setError(errorMessage);
-    } finally {
-        setGeneratingSceneVideoIds(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(imageToProcess.id);
-            return newSet;
-        });
-    }
   };
 
   const handleDownloadImages = async () => {
@@ -487,6 +411,10 @@ const App: React.FC = () => {
         setError("Silakan unggah gambar karakter dan produk.");
         return;
     }
+    if (!affiliateScenario.trim()) {
+      setError("Silakan tulis skenario atau hasilkan ide terlebih dahulu.");
+      return;
+    }
     
     setIsGeneratingAffiliate(true);
     setError(null);
@@ -494,7 +422,7 @@ const App: React.FC = () => {
     setAffiliateVideoJsons([]);
 
     try {
-        const { images, videoJson } = await generateAffiliatePackage(validImages[0], validImages[1], affiliateLanguage);
+        const { images, videoJson } = await generateAffiliatePackage(validImages[0], validImages[1], affiliateScenario, affiliateLanguage);
         
         setAffiliateVideoJsons(videoJson.map(json => JSON.stringify(json, null, 2)));
         
@@ -557,6 +485,7 @@ const App: React.FC = () => {
               <TabButton name="Generator Cerita" active={activeView === 'wizard'} onClick={() => setActiveView('wizard')} />
               <TabButton name="UGC IMG & PROMPT" active={activeView === 'imageAffiliate'} onClick={() => setActiveView('imageAffiliate')} />
               <TabButton name="Buku Cerita" active={activeView === 'storybook'} onClick={() => setActiveView('storybook')} disabled={!fullStory} />
+              <TabButton name="Fiture Unlimited Veo" active={activeView === 'unlimitedVeo'} onClick={() => setActiveView('unlimitedVeo')} />
               <TabButton name="About" active={activeView === 'about'} onClick={() => setActiveView('about')} />
             </nav>
           </div>
@@ -593,6 +522,8 @@ const App: React.FC = () => {
               onCharacterTextChange={setCharacterText}
               characterGender={characterGender}
               onCharacterGenderChange={setCharacterGender}
+              animalImage={animalImage}
+              onAnimalImageChange={setAnimalImage}
               imageAspectRatio={imageAspectRatio}
               onImageAspectRatioChange={setImageAspectRatio}
             />
@@ -609,6 +540,8 @@ const App: React.FC = () => {
               onDownloadAll={handleDownloadAffiliateImages}
               onGenerateIdea={handleGenerateAffiliateIdea}
               isGeneratingIdea={isGeneratingAffiliateIdea}
+              scenario={affiliateScenario}
+              onScenarioChange={setAffiliateScenario}
               languages={UGC_LANGUAGES}
               selectedLanguage={affiliateLanguage}
               onLanguageChange={setAffiliateLanguage}
@@ -626,13 +559,12 @@ const App: React.FC = () => {
               voiceOptions={VOICE_OPTIONS}
               selectedVoice={selectedVoice}
               onVoiceChange={setSelectedVoice}
-              isGeneratingVideo={isGeneratingVideo}
-              generatedVideoUrl={generatedVideoUrl}
-              onGenerateVideo={handleGenerateVideo}
-              onGenerateVideoForScene={handleGenerateVideoForScene}
-              generatedSceneVideos={generatedSceneVideos}
-              generatingSceneVideoIds={generatingSceneVideoIds}
+              sceneNarrations={sceneNarrations}
             />
+          )}
+
+          {activeView === 'unlimitedVeo' && (
+            <UnlimitedVeoView />
           )}
 
           {activeView === 'about' && (
