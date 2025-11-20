@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { FilmIcon } from './Icons';
 
@@ -39,7 +40,7 @@ export const AboutView: React.FC = () => {
                 Alat ini adalah asisten kreatif serbaguna yang dirancang untuk mengubah ide sederhana menjadi konten multimedia yang kaya dan menarik. Mulai dari cerita tertulis hingga video sinematik dan konten UGC (User-Generated Content) untuk media sosial, semua bisa dibuat di sini.
             </p>
             <p>
-                Berikut adalah fitur-fitur utama yang dibagi berdasarkan tiga modul utama:
+                Berikut adalah fitur-fitur utama yang dibagi berdasarkan modul utama:
             </p>
 
             <Section title="1. Generator Cerita">
@@ -68,7 +69,19 @@ export const AboutView: React.FC = () => {
                 </ul>
             </Section>
 
-            <Section title="3. Buku Cerita">
+            <Section title="3. Lirik Musik (Baru)">
+                <p className="text-slate-600 dark:text-slate-400">
+                   Alat analisis musik cerdas untuk mendapatkan lirik yang akurat, terstruktur, dan siap pakai.
+                </p>
+                <ul className="list-disc space-y-2 pl-5 mt-4">
+                    <ListItem title="Pencarian Lirik Global">Menggunakan kecerdasan Google Search untuk menemukan lirik lagu dari seluruh dunia (Indonesia, Barat, K-Pop, J-Pop, dll) secara akurat.</ListItem>
+                    <ListItem title="Format Suno AI Ready">Lirik otomatis diformat dengan tag struktur ([Verse], [Chorus]) tanpa kunci gitar, siap untuk langsung digunakan di platform Suno AI.</ListItem>
+                    <ListItem title="Analisis & Edit">Memungkinkan Anda memverifikasi dan mengedit lirik asli sebelum melakukan proses terjemahan.</ListItem>
+                    <ListItem title="Terjemahan Sinkron">Menerjemahkan lirik baris-demi-baris secara presisi tanpa merusak struktur lagu, memudahkan pemahaman makna.</ListItem>
+                </ul>
+            </Section>
+
+            <Section title="4. Buku Cerita">
                 <p className="text-slate-600 dark:text-slate-400">
                     Di sinilah cerita Anda menjadi hidup dalam bentuk visual dan audio.
                 </p>
@@ -76,6 +89,12 @@ export const AboutView: React.FC = () => {
                     <ListItem title="Visualisasi Cerita">Lihat cerita lengkap Anda berdampingan dengan ilustrasi sinematik yang dibuat oleh AI berdasarkan adegan-adegan kunci.</ListItem>
                     <ListItem title="Narasi Audio (Text-to-Speech)">Ubah teks cerita Anda menjadi narasi audio berkualitas tinggi yang dapat diunduh dalam format <code>.wav</code>.</ListItem>
                     <ListItem title="Manajemen Aset">Regenerasi gambar yang kurang pas dengan satu klik dan unduh semua ilustrasi dalam satu file ZIP yang praktis.</ListItem>
+                </ul>
+            </Section>
+
+             <Section title="5. Fitur Lainnya">
+                <ul className="list-disc space-y-2 pl-5 mt-4">
+                    <ListItem title="Manajemen Kunci API">Dukungan untuk menggunakan kunci API pribadi Anda untuk menghindari batasan kuota sistem.</ListItem>
                 </ul>
             </Section>
         </div>

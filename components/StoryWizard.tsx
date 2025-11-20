@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Genre, StoryIdea, CharacterImageData, Gender, AspectRatio } from '../types';
 import { PlusIcon, SparklesIcon, XIcon, WandIcon, LandscapeIcon, PortraitIcon } from './Icons';
@@ -60,11 +61,17 @@ export const StoryWizard: React.FC<StoryWizardProps> = ({
   onImageAspectRatioChange,
 }) => {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
-      {/* Left Column: Story Building */}
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col shadow-lg transition-colors duration-300">
-        <h2 className="text-xl font-semibold text-cyan-700 dark:text-cyan-400 mb-1">Langkah 1: Pilih Genre Anda</h2>
-        <div className="flex flex-wrap gap-2 mb-6">
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-12">
+      
+      {/* SECTION 1: INSPIRATION (Genre & Ideas) */}
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors duration-300">
+        <div className="mb-6 text-center">
+            <h2 className="text-xl font-bold text-cyan-700 dark:text-cyan-400 mb-2">Langkah 1: Tentukan Tema & Ide</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Pilih genre favorit Anda dan klik ide cerita untuk memulai.</p>
+        </div>
+
+        {/* Genres */}
+        <div className="flex flex-wrap justify-center gap-3 mb-8">
           {genres.map(genre => (
             <ToggleButton
               key={genre.value}
@@ -72,143 +79,174 @@ export const StoryWizard: React.FC<StoryWizardProps> = ({
               onClick={() => onGenreChange(genre)}
               active={selectedGenre.value === genre.value}
             >
-              {genre.emoji}
+              <span className="text-lg mr-1">{genre.emoji}</span>
             </ToggleButton>
           ))}
         </div>
 
-        <h2 className="text-xl font-semibold text-cyan-700 dark:text-cyan-400 mb-1">Langkah 2: Cerita & Karakter</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-4 text-sm">Tentukan karakter Anda dan tulis draf cerita.</p>
-        
-        <CharacterCreator 
-          characterImage={characterImage}
-          onCharacterImageChange={onCharacterImageChange}
-          onCharacterTextChange={onCharacterTextChange}
-          characterText={characterText}
-          gender={characterGender}
-          onGenderChange={onCharacterGenderChange}
-        />
-
-        <div className="mt-4">
-          <ImageUploader
-            image={animalImage}
-            onImageChange={onAnimalImageChange}
-            label="Unggah Gambar Hewan Peliharaan (Opsional)"
-          />
-        </div>
-
-        <div className="mt-4">
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Pilih Rasio Aspek Gambar</p>
-            <div className="flex gap-2">
-                <button
+        {/* Idea Pool Grid */}
+        <div className="bg-indigo-50 dark:bg-slate-900/50 p-4 rounded-xl border border-indigo-100 dark:border-slate-700">
+            <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mb-3 flex items-center">
+                <SparklesIcon className="h-4 w-4 mr-2"/>
+                Kumpulan Ide Cerita (Klik untuk tambah)
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+            {isLoadingIdeas ? (
+                Array.from({ length: 8 }).map((_, index) => (
+                    <div key={index} className="bg-white dark:bg-slate-800 h-20 rounded-lg animate-pulse border border-slate-200 dark:border-slate-700"></div>
+                ))
+            ) : (
+                storyIdeas.map(idea => (
+                <div key={idea.id} className="relative group">
+                    <button
                     type="button"
-                    onClick={() => onImageAspectRatioChange('16:9')}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 border flex items-center justify-center gap-2 w-full ${
-                        imageAspectRatio === '16:9' 
-                            ? 'bg-cyan-600 text-white border-cyan-600 shadow'
-                            : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 dark:text-slate-300'
-                    }`}
-                >
-                    <LandscapeIcon className="h-5 w-5" />
-                    <span>Landscape (16:9)</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => onImageAspectRatioChange('9:16')}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 border flex items-center justify-center gap-2 w-full ${
-                        imageAspectRatio === '9:16' 
-                            ? 'bg-cyan-600 text-white border-cyan-600 shadow'
-                            : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:border-slate-600 dark:text-slate-300'
-                    }`}
-                >
-                    <PortraitIcon className="h-5 w-5" />
-                    <span>Portrait (9:16)</span>
-                </button>
+                    onClick={() => onSelectIdea(idea)}
+                    className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-left p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all duration-200 w-full h-full min-h-[5rem] text-xs sm:text-sm flex flex-col justify-between"
+                    >
+                    <span className="line-clamp-3 mb-1">{idea.text}</span>
+                    <PlusIcon className="h-4 w-4 text-indigo-400 self-end"/>
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onDismissIdea(idea); }}
+                        className="absolute -top-1 -right-1 p-1 rounded-full bg-red-100 text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all z-10 shadow-sm"
+                        title="Hapus ide ini"
+                    >
+                        <XIcon className="h-3 w-3" />
+                    </button>
+                </div>
+                ))
+            )}
             </div>
         </div>
+      </div>
 
-        <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg min-h-[200px] border border-slate-300 dark:border-slate-600 flex-grow flex flex-col focus-within:ring-2 focus-within:ring-cyan-500 transition-shadow mt-4 transition-colors duration-300">
+      {/* SECTION 2: CONFIGURATION (Character & Settings) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Character Config */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+               <h2 className="text-lg font-bold text-cyan-700 dark:text-cyan-400 mb-4 flex items-center">
+                    <span className="bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 w-6 h-6 rounded-full flex items-center justify-center text-sm mr-2">2</span>
+                    Karakter Utama
+               </h2>
+               <CharacterCreator 
+                    characterImage={characterImage}
+                    onCharacterImageChange={onCharacterImageChange}
+                    onCharacterTextChange={onCharacterTextChange}
+                    characterText={characterText}
+                    gender={characterGender}
+                    onGenderChange={onCharacterGenderChange}
+                />
+          </div>
+
+          {/* Visual Settings */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+                <h2 className="text-lg font-bold text-cyan-700 dark:text-cyan-400 mb-4 flex items-center">
+                    <span className="bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 w-6 h-6 rounded-full flex items-center justify-center text-sm mr-2">3</span>
+                    Pengaturan Visual
+               </h2>
+               
+               <div className="mb-6">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Rasio Gambar</p>
+                    <div className="flex gap-3">
+                        <button
+                            type="button"
+                            onClick={() => onImageAspectRatioChange('16:9')}
+                            className={`flex-1 py-3 px-4 rounded-lg border text-sm font-semibold transition-all flex flex-col items-center justify-center gap-2 ${
+                                imageAspectRatio === '16:9'
+                                    ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-500 text-cyan-700 dark:text-cyan-400 ring-1 ring-cyan-500'
+                                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'
+                            }`}
+                        >
+                            <LandscapeIcon className="h-6 w-6" />
+                            Landscape (16:9)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onImageAspectRatioChange('9:16')}
+                            className={`flex-1 py-3 px-4 rounded-lg border text-sm font-semibold transition-all flex flex-col items-center justify-center gap-2 ${
+                                imageAspectRatio === '9:16'
+                                    ? 'bg-cyan-50 dark:bg-cyan-900/20 border-cyan-500 text-cyan-700 dark:text-cyan-400 ring-1 ring-cyan-500'
+                                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600'
+                            }`}
+                        >
+                            <PortraitIcon className="h-6 w-6" />
+                            Portrait (9:16)
+                        </button>
+                    </div>
+               </div>
+
+               <div className="mt-auto">
+                    <ImageUploader
+                        image={animalImage}
+                        onImageChange={onAnimalImageChange}
+                        label="Pendamping / Hewan (Opsional)"
+                        heightClass="h-24"
+                    />
+               </div>
+          </div>
+      </div>
+
+      {/* SECTION 3: COMPOSITION (Text & Actions) */}
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg">
+        <h2 className="text-lg font-bold text-cyan-700 dark:text-cyan-400 mb-4 flex items-center">
+            <span className="bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 w-6 h-6 rounded-full flex items-center justify-center text-sm mr-2">4</span>
+            Tulis Alur Cerita
+        </h2>
+
+        <div className="relative bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-300 dark:border-slate-600 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:border-transparent transition-all mb-6">
             <textarea
                 value={storyText}
                 onChange={(e) => onStoryTextChange(e.target.value)}
-                className="bg-transparent p-4 w-full h-full flex-grow resize-none text-slate-700 dark:text-slate-200 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
-                placeholder="Ketik plot cerita Anda di sini, atau pilih ide dari kanan..."
+                className="w-full bg-transparent p-6 min-h-[200px] resize-y text-slate-700 dark:text-slate-200 focus:outline-none text-lg leading-relaxed placeholder-slate-400 dark:placeholder-slate-500"
+                placeholder="Mulai menulis di sini, atau klik ide di atas untuk memulai..."
             />
+            <div className="absolute bottom-4 right-4 text-xs text-slate-400">
+                {storyText.length} karakter
+            </div>
         </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-            <button
+
+        <div className="flex flex-col sm:flex-row gap-4">
+             <button
                 type="button"
                 onClick={onPolishStory}
                 disabled={!isStoryReady || isPolishing || isGeneratingStory}
-                className="w-full bg-amber-500 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-amber-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed disabled:text-slate-500 dark:disabled:text-slate-400 shadow-lg"
+                className="sm:w-1/3 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-bold py-4 px-6 rounded-xl flex items-center justify-center transition-all duration-200 hover:bg-amber-200 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {isPolishing ? (
                     <>
-                        <Spinner className="h-5 w-5 mr-3"/>
+                        <Spinner className="h-5 w-5 mr-2 text-amber-600"/>
                         Memoles...
                     </>
                 ) : (
                     <>
-                        <WandIcon className="h-5 w-5 mr-3"/>
-                        Poles Tulisan
+                        <WandIcon className="h-5 w-5 mr-2"/>
+                        Poles Tulisan AI
                     </>
                 )}
             </button>
+
             <button
                 type="button"
                 onClick={onGenerateStory}
                 disabled={!isStoryReady || isGeneratingStory || isPolishing}
-                className="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-cyan-700 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed disabled:text-slate-500 dark:disabled:text-slate-400 shadow-lg"
+                className="sm:w-2/3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center transition-all duration-200 hover:from-cyan-700 hover:to-blue-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:from-slate-400 disabled:to-slate-500 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
             >
                 {isGeneratingStory ? (
                     <>
-                        <Spinner className="h-5 w-5 mr-3"/>
-                        Merangkai Epik...
+                        <Spinner className="h-6 w-6 mr-3 text-white"/>
+                        <span className="text-lg">Sedang Merangkai Cerita...</span>
                     </>
                 ) : (
                     <>
-                        <SparklesIcon className="h-5 w-5 mr-3"/>
-                        Buat Cerita
+                        <SparklesIcon className="h-6 w-6 mr-3"/>
+                        <span className="text-lg">GENERATE STORYBOOK</span>
                     </>
                 )}
             </button>
         </div>
       </div>
 
-      {/* Right Column: Idea Pool */}
-      <div className="bg-indigo-700 dark:bg-slate-900 p-6 rounded-2xl border border-indigo-800 dark:border-slate-700 shadow-sm transition-colors duration-300">
-        <h2 className="text-xl font-semibold text-indigo-300 mb-1">Kumpulan Ide</h2>
-        <p className="text-indigo-400 mb-4 text-sm">Klik sebuah ide untuk menambahkannya ke cerita Anda.</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {isLoadingIdeas ? (
-            Array.from({ length: 16 }).map((_, index) => (
-                <div key={index} className="bg-indigo-500/50 dark:bg-slate-800 h-24 rounded-lg animate-pulse"></div>
-            ))
-          ) : (
-            storyIdeas.map(idea => (
-              <div key={idea.id} className="relative group">
-                <button
-                  type="button"
-                  onClick={() => onSelectIdea(idea)}
-                  className="bg-indigo-500 text-white text-left p-3 rounded-lg flex flex-col justify-between w-full h-24 text-sm hover:bg-indigo-600 hover:ring-2 hover:ring-indigo-300 transition-all duration-200 cursor-pointer dark:bg-indigo-700 dark:hover:bg-indigo-600"
-                >
-                  <span className="pr-4">{idea.text}</span>
-                  <PlusIcon className="h-5 w-5 text-indigo-200 self-end group-hover:text-indigo-100 dark:text-indigo-300 dark:group-hover:text-indigo-200 transition-colors"/>
-                </button>
-                 <button 
-                    type="button"
-                    onClick={() => onDismissIdea(idea)}
-                    aria-label="Hapus ide"
-                    className="absolute top-1 right-1 p-1 rounded-full bg-white/20 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all z-10 dark:hover:bg-red-600"
-                >
-                    <XIcon className="h-3 w-3" />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 };

@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { CharacterImageData, GeneratedImage, LanguageOption } from '../types';
-import { SparklesIcon, DownloadIcon, WandIcon } from './Icons';
+import { SparklesIcon, DownloadIcon } from './Icons';
 import { Spinner } from './common/Spinner';
 import { ImageLoadingSkeleton } from './common/ImageLoadingSkeleton';
 import { ImageUploader } from './common/ImageUploader';
@@ -11,18 +12,50 @@ interface ImageAffiliateViewProps {
     baseImages: (CharacterImageData | null)[];
     onBaseImageChange: (image: CharacterImageData | null, index: number) => void;
     isGenerating: boolean;
-    onGenerate: () => void;
+    onGenerate: (useCharacter: boolean, useProduct: boolean) => void;
     generatedImages: (GeneratedImage | null)[];
     videoJsons: string[];
     onDownloadAll: () => void;
-    onGenerateIdea: () => void;
-    isGeneratingIdea: boolean;
     scenario: string;
     onScenarioChange: (scenario: string) => void;
     languages: LanguageOption[];
     selectedLanguage: string;
     onLanguageChange: (language: string) => void;
 }
+
+const LockToggle: React.FC<{ label: string; isLocked: boolean; onToggle: () => void; hasImage: boolean }> = ({ label, isLocked, onToggle, hasImage }) => (
+    <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>
+        <button
+            onClick={onToggle}
+            disabled={!hasImage}
+            className={`flex items-center gap-2 px-2 py-1 rounded-md text-xs font-bold transition-all ${
+                !hasImage 
+                    ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500'
+                    : isLocked
+                        ? 'bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
+                        : 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600'
+            }`}
+            title={isLocked ? "Gambar ini akan digunakan (Terkunci)" : "Gambar ini akan diabaikan"}
+        >
+            {isLocked ? (
+                <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                    Dipakai
+                </>
+            ) : (
+                <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
+                    </svg>
+                    Diabaikan
+                </>
+            )}
+        </button>
+    </div>
+);
 
 export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
     baseImages,
@@ -32,15 +65,33 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
     generatedImages,
     videoJsons,
     onDownloadAll,
-    onGenerateIdea,
-    isGeneratingIdea,
     scenario,
     onScenarioChange,
     languages,
     selectedLanguage,
     onLanguageChange,
 }) => {
-    const isReadyToGenerate = baseImages[0] && baseImages[1] && scenario.trim() !== '';
+    // State for "Lock" feature
+    const [useCharacter, setUseCharacter] = useState(true);
+    const [useProduct, setUseProduct] = useState(true);
+
+    // Automatically unlock if image is removed, automatically lock if image is added (if it was previously empty)
+    useEffect(() => {
+        if (!baseImages[0]) setUseCharacter(false);
+        else if (baseImages[0] && !useCharacter) setUseCharacter(true);
+    }, [baseImages[0]]);
+
+    useEffect(() => {
+        if (!baseImages[1]) setUseProduct(false);
+        else if (baseImages[1] && !useProduct) setUseProduct(true);
+    }, [baseImages[1]]);
+
+    const hasCharacter = !!baseImages[0];
+    const hasProduct = !!baseImages[1];
+
+    // Valid if at least one active image is present and scenario is filled
+    const isReadyToGenerate = ((hasCharacter && useCharacter) || (hasProduct && useProduct)) && scenario.trim() !== '';
+    
     const hasImages = generatedImages.some(img => img && img.src && !img.isLoading);
     const [fullNarration, setFullNarration] = useState('');
 
@@ -73,38 +124,40 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg flex flex-col gap-6">
                     <div>
                          <h2 className="text-xl font-semibold text-cyan-700 dark:text-cyan-400 mb-4">Langkah 1: Konfigurasi</h2>
+                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Gunakan fitur Lock (🔒) untuk memilih gambar mana yang akan digunakan dalam generasi.</p>
+                        
                         <div className="flex flex-col gap-4">
-                           <ImageUploader
-                                image={baseImages[0]}
-                                onImageChange={(newImage) => onBaseImageChange(newImage, 0)}
-                                label="Gambar Karakter"
-                            />
-                             <ImageUploader
-                                image={baseImages[1]}
-                                onImageChange={(newImage) => onBaseImageChange(newImage, 1)}
-                                label="Gambar Produk"
-                            />
                             <div>
-                                <div className="flex justify-between items-center mb-2">
+                                <LockToggle 
+                                    label="Gambar Karakter" 
+                                    isLocked={useCharacter} 
+                                    hasImage={hasCharacter}
+                                    onToggle={() => hasCharacter && setUseCharacter(!useCharacter)} 
+                                />
+                                <ImageUploader
+                                    image={baseImages[0]}
+                                    onImageChange={(newImage) => onBaseImageChange(newImage, 0)}
+                                    label=""
+                                />
+                            </div>
+                            
+                            <div>
+                                <LockToggle 
+                                    label="Gambar Produk" 
+                                    isLocked={useProduct} 
+                                    hasImage={hasProduct}
+                                    onToggle={() => hasProduct && setUseProduct(!useProduct)} 
+                                />
+                                <ImageUploader
+                                    image={baseImages[1]}
+                                    onImageChange={(newImage) => onBaseImageChange(newImage, 1)}
+                                    label=""
+                                />
+                            </div>
+
+                            <div>
+                                <div className="mb-2">
                                     <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Tulis Skenario UGC</p>
-                                    <button
-                                        type="button"
-                                        onClick={onGenerateIdea}
-                                        disabled={!baseImages[0] || !baseImages[1] || isGeneratingIdea}
-                                        className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                                    >
-                                        {isGeneratingIdea ? (
-                                            <>
-                                                <Spinner className="h-4 w-4" />
-                                                Mencari ide...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <WandIcon className="h-4 w-4" />
-                                                Dapatkan Ide Ajaib
-                                            </>
-                                        )}
-                                    </button>
                                 </div>
                                 <textarea
                                     value={scenario}
@@ -139,7 +192,7 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
                          <h2 className="text-xl font-semibold text-cyan-700 dark:text-cyan-400 mb-4">Langkah 2: Buat Konten</h2>
                         <p className="text-xs text-center text-slate-500 dark:text-slate-400 mb-2">Mode Potret (9:16) akan digunakan untuk konten UGC.</p>
                          <button
-                            onClick={onGenerate}
+                            onClick={() => onGenerate(useCharacter, useProduct)}
                             disabled={!isReadyToGenerate || isGenerating}
                             className="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-cyan-700 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed disabled:text-slate-500 dark:disabled:text-slate-400 shadow-lg"
                         >
@@ -216,7 +269,7 @@ export const ImageAffiliateView: React.FC<ImageAffiliateViewProps> = ({
                             <div className="flex flex-col items-center justify-center text-center text-slate-500 dark:text-slate-400 h-full py-10">
                                 <SparklesIcon className="h-12 w-12 text-slate-400 dark:text-slate-500 mb-4" />
                                 <h3 className="font-semibold text-lg text-slate-600 dark:text-slate-300">Siap untuk Berkreasi</h3>
-                                <p>Unggah aset Anda dan klik 'Buat' untuk melihat keajaibannya.</p>
+                                <p>Pilih (Lock) aset yang ingin digunakan dan klik 'Buat'.</p>
                             </div>
                         )}
                      </div>
