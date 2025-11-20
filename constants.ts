@@ -26,3 +26,11 @@ export const UGC_LANGUAGES: LanguageOption[] = [
   { name: 'Malaysia', value: 'Malay' },
   { name: 'India', value: 'Hindi' },
 ];
+
+export const LYRIC_LANGUAGES: LanguageOption[] = [
+    { name: 'Inggris', value: 'English' },
+    { name: 'Jepang', value: 'Japanese' },
+    { name: 'Indonesia', value: 'Indonesian' },
+    { name: 'Jawa', value: 'Javanese' },
+    { name: 'Sunda', value: 'Sundanese' },
+];

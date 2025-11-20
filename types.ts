@@ -1,3 +1,4 @@
+
 export interface Genre {
   name: string;
   value: string;
@@ -10,6 +11,7 @@ export interface StoryIdea {
 }
 
 export type AspectRatio = '16:9' | '9:16';
+export type VideoResolution = '720p' | '1080p';
 
 export interface GeneratedImage {
   id: string;
@@ -24,7 +26,7 @@ export interface CharacterImageData {
   name: string;
 }
 
-export type View = 'wizard' | 'storybook' | 'imageAffiliate' | 'about' | 'unlimitedVeo';
+export type View = 'wizard' | 'storybook' | 'imageAffiliate' | 'about' | 'musicLyric' | 'videoGenerator';
 
 export type Gender = 'male' | 'female' | 'unspecified';
 
@@ -39,3 +41,15 @@ export interface LanguageOption {
   name: string;
   value: string;
 }
+
+export interface LyricLine {
+  original: string;
+  translated: string;
+}
+
+export interface LyricData {
+  lyrics: string;
+  sources: { title: string; uri: string }[];
+}
+
+export type VeoModel = 'veo-3.1-fast-generate-preview' | 'veo-3.1-generate-preview' | 'veo-2.0-generate-preview';
