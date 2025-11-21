@@ -65,7 +65,7 @@ export const AboutView: React.FC = () => {
                     <ListItem title="Paket Konten Lengkap">Secara otomatis menghasilkan 7 gambar Portrait (9:16) dan 7 prompt video JSON yang menyertainya.</ListItem>
                     <ListItem title="Skrip Siap Pakai (Voice Over Only)">JSON berisi deskripsi adegan dan skrip sulih suara yang singkat dan jelas. Fitur ini dirancang untuk fokus pada narasi suara tanpa teks overlay, musik, atau efek suara, menghasilkan video yang bersih. Setiap adegan dirancang untuk durasi sekitar 8 detik.</ListItem>
                     <ListItem title="Dukungan Multi-Bahasa">Buat skrip video dalam berbagai bahasa, termasuk Indonesia, Inggris, Jepang, Korea, Spanyol, Malaysia, dan India.</ListItem>
-                    <ListItem title="Unduhan Kustom">Semua gambar yang dihasilkan dapat diunduh dalam satu file ZIP bernama <code>makasih emha ganteng.zip</code>.</ListItem>
+                    <ListItem title="Unduhan Kustom">Semua gambar yang dihasilkan dapat diunduh dalam satu file ZIP bernama <code>terimakasi-emhatech-ganteng.zip</code>.</ListItem>
                 </ul>
             </Section>
 
