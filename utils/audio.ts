@@ -1,7 +1,9 @@
 
 // Decodes a base64 string into a Uint8Array.
 export function decodeBase64(base64: string): Uint8Array {
-  const binaryString = atob(base64);
+  // Remove any whitespace that might have crept in (newlines, spaces)
+  const cleanBase64 = base64.replace(/\s/g, '');
+  const binaryString = atob(cleanBase64);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
