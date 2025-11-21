@@ -1,361 +1,274 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import JSZip from 'jszip';
-import { GENRES, INITIAL_IDEAS_COUNT, VOICE_OPTIONS, UGC_LANGUAGES, LYRIC_LANGUAGES } from './constants';
-import { getInitialIdeas, getNewIdea, generateFullStory, generateCharacterProfile, generateImage, polishStory, getNewIdeasFromText, generateStoryAudio, extractNarrationFromStory, generateAffiliatePackage, generateStoryScenes, apiKeyManager, getLyricsFromYoutube, translateLyrics, generateVeoVideo } from './services/geminiService';
-import { Genre, StoryIdea, GeneratedImage, AspectRatio, View, CharacterImageData, Gender, Voice, LyricLine, VeoModel, VideoResolution } from './types';
 import { Header } from './components/Header';
+import { Footer } from './components/Footer';
 import { StoryWizard } from './components/StoryWizard';
 import { StorybookView } from './components/StorybookView';
 import { ImageAffiliateView } from './components/ImageAffiliateView';
 import { AboutView } from './components/AboutView';
-import { pcmToWavBlob, decodeBase64 } from './utils/audio';
-import { TabButton } from './components/common/TabButton';
-import { Spinner } from './components/common/Spinner';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { MusicLyricView } from './components/MusicLyricView';
 import { VideoGeneratorView } from './components/VideoGeneratorView';
+import { TabButton } from './components/common/TabButton';
+import { Spinner } from './components/common/Spinner';
+import { GENRES, INITIAL_IDEAS_COUNT, VOICE_OPTIONS, UGC_LANGUAGES, LYRIC_LANGUAGES } from './constants';
+import { 
+    Genre, StoryIdea, GeneratedImage, CharacterImageData, Gender, 
+    View, Voice, AspectRatio, LyricLine, VeoModel, VideoResolution 
+} from './types';
+import { 
+    setApiKeys, generateFullStory, generateStoryScenes, 
+    generateStoryIdeas, polishStoryText, generateImage, generateSpeech,
+    generateLyrics, translateLyrics, generateUGCScripts, generateVeoVideo
+} from './services/geminiService';
+import { pcmToWavBlob, decodeBase64 } from './utils/audio';
 
-const STORY_LOADING_MESSAGES = [
-  "EmhaTech sedang membuat gambar, kamu diam aja bikin kopi... ☕",
-  "Sedang memanggil roh seniman digital... 🎨",
-  "AI lagi mikir keras, jangan diganggu... 🤫",
-  "Merangkai kata-kata mutiara (dan visual kece)... ✨",
-  "Sabar, karya seni butuh waktu... ⏳",
-  "Lagi render pixel demi pixel, awas panas... 🔥",
-  "Mengumpulkan inspirasi dari alam semesta... 🌌",
-  "Menyusun plot twist yang mencengangkan... 😱",
-  "Mewarnai imajinasi kamu... 🖌️",
-  "Hampir jadi, jangan tutup tab ya! 🚀"
+const FUNNY_MESSAGES = [
+    "EmhaTech sedang memasak, tunggu dulu ya... 🍳",
+    "AI sedang mencari inspirasi di dimensi lain... 🌌",
+    "Menghubungi penulis skenario terbaik di galaksi... ✍️",
+    "Sedang merangkai kata-kata cinta... eh, cerita... ❤️",
+    "Menyeduh kopi digital untuk AI... ☕",
+    "EmhaTech bilang: Sabar itu subur... 🌱",
+    "Mengumpulkan pixel-pixel ajaib... ✨",
+    "Jangan di-close, nanti AI-nya nangis... 😢",
+    "Sedang memoles plot twist yang mencengangkan... 😱",
+    "Memanggil roh kreativitas... 👻",
+    "Mengunduh imajinasi dari awan... ☁️",
+    "Sedang mengetik dengan kecepatan cahaya... ⚡",
+    "EmhaTech sedang melukis mimpi anda... 🎨",
+    "Menyiapkan panggung sandiwara digital... 🎭",
+    "Menerjemahkan bahasa alien ke bahasa manusia... 👽"
 ];
 
-const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<View>('wizard');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  
-  // Wizard State
-  const [selectedGenre, setSelectedGenre] = useState<Genre>(GENRES[0]);
-  const [storyIdeas, setStoryIdeas] = useState<StoryIdea[]>([]);
-  const [storyText, setStoryText] = useState<string>('');
-  const [characterText, setCharacterText] = useState<string>('');
-  const [characterImage, setCharacterImage] = useState<CharacterImageData | null>(null);
-  const [animalImage, setAnimalImage] = useState<CharacterImageData | null>(null);
-  const [characterGender, setCharacterGender] = useState<Gender>('unspecified');
-  const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('9:16');
-  
-  // Storybook State
-  const [fullStory, setFullStory] = useState<string>('');
-  const [imagePrompts, setImagePrompts] = useState<string[]>([]);
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState<Voice>(VOICE_OPTIONS[0].value);
-  const [sceneNarrations, setSceneNarrations] = useState<string[]>([]);
+export const App: React.FC = () => {
+    // UI State
+    const [theme, setTheme] = useState<'light' | 'dark'>('light');
+    const [view, setView] = useState<View>('wizard');
+    const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+    const [apiKeys, setApiKeysState] = useState<string[]>([]);
 
-  // Image Affiliate State
-  const [affiliateImages, setAffiliateImages] = useState<(CharacterImageData | null)[]>([null, null]);
-  const [affiliateScenario, setAffiliateScenario] = useState<string>('');
-  const [affiliateGeneratedImages, setAffiliateGeneratedImages] = useState<(GeneratedImage | null)[]>(Array(7).fill(null));
-  const [affiliateVideoJsons, setAffiliateVideoJsons] = useState<string[]>([]);
-  const [isGeneratingAffiliate, setIsGeneratingAffiliate] = useState<boolean>(false);
-  const [affiliateLanguage, setAffiliateLanguage] = useState<string>(UGC_LANGUAGES[0].value);
-
-  // Music Lyric State
-  const [youtubeUrl, setYoutubeUrl] = useState<string>('');
-  const [originalLyrics, setOriginalLyrics] = useState<string>('');
-  const [lyricSources, setLyricSources] = useState<{title: string, uri: string}[]>([]);
-  const [translatedLyrics, setTranslatedLyrics] = useState<LyricLine[] | null>(null);
-  const [selectedLyricLanguage, setSelectedLyricLanguage] = useState<string>(LYRIC_LANGUAGES[0].value);
-  const [isFetchingLyrics, setIsFetchingLyrics] = useState<boolean>(false);
-  const [isTranslatingLyrics, setIsTranslatingLyrics] = useState<boolean>(false);
-
-  // Video Generator State
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState<boolean>(false);
-
-  // Global Loading/Error State
-  const [isLoadingIdeas, setIsLoadingIdeas] = useState<boolean>(true);
-  const [isGeneratingStory, setIsGeneratingStory] = useState<boolean>(false);
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState<boolean>(false);
-  const [isPolishing, setIsPolishing] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Loading Message State
-  const [storyLoadingMsg, setStoryLoadingMsg] = useState(STORY_LOADING_MESSAGES[0]);
-
-  // API Key Modal State
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [currentUserApiKeys, setCurrentUserApiKeys] = useState<string[]>([]);
-  
-  const debounceTimeout = useRef<number | null>(null);
-  
-  useEffect(() => {
-    let initialTheme: 'light' | 'dark' = 'light';
-    try {
-        if (typeof localStorage !== 'undefined') {
-             const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-             const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-             initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-        }
-    } catch (e) {
-        console.warn("Failed to access localStorage for theme", e);
-    }
-    setTheme(initialTheme);
+    // Story Wizard State
+    const [selectedGenre, setSelectedGenre] = useState<Genre>(GENRES[0]);
+    const [storyIdeas, setStoryIdeas] = useState<StoryIdea[]>([]);
+    const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
+    const [storyText, setStoryText] = useState('');
+    const [isGeneratingStory, setIsGeneratingStory] = useState(false);
+    const [isPolishing, setIsPolishing] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState(FUNNY_MESSAGES[0]);
     
-    setCurrentUserApiKeys(apiKeyManager.getUserApiKeys());
-    
-    // Safely check process.env
-    let hasSystemKey = false;
-    try {
-        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-            hasSystemKey = true;
+    // Character State
+    const [characterImage, setCharacterImage] = useState<CharacterImageData | null>(null);
+    const [characterText, setCharacterText] = useState('');
+    const [characterGender, setCharacterGender] = useState<Gender>('unspecified');
+    const [animalImage, setAnimalImage] = useState<CharacterImageData | null>(null);
+    const [imageAspectRatio, setImageAspectRatio] = useState<AspectRatio>('16:9');
+
+    // Storybook State
+    const [fullStory, setFullStory] = useState('');
+    const [sceneNarrations, setSceneNarrations] = useState<string[]>([]);
+    const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+    const [selectedVoice, setSelectedVoice] = useState<Voice>('Kore');
+    const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+
+    // UGC/Affiliate State
+    const [ugcBaseImages, setUgcBaseImages] = useState<(CharacterImageData | null)[]>([null, null]);
+    const [ugcScenario, setUgcScenario] = useState('');
+    const [ugcGeneratedImages, setUgcGeneratedImages] = useState<(GeneratedImage | null)[]>(Array(7).fill(null));
+    const [videoJsons, setVideoJsons] = useState<string[]>([]);
+    const [isGeneratingUGC, setIsGeneratingUGC] = useState(false);
+    const [ugcLanguage, setUgcLanguage] = useState('Indonesian');
+
+    // Music/Lyrics State
+    const [youtubeUrl, setYoutubeUrl] = useState('');
+    const [originalLyrics, setOriginalLyrics] = useState('');
+    const [translatedLyrics, setTranslatedLyrics] = useState<LyricLine[] | null>(null);
+    const [isFetchingLyrics, setIsFetchingLyrics] = useState(false);
+    const [isTranslatingLyrics, setIsTranslatingLyrics] = useState(false);
+    const [lyricSources, setLyricSources] = useState<{ title: string; uri: string }[]>([]);
+    const [selectedLyricLanguage, setSelectedLyricLanguage] = useState('Indonesian');
+
+    // Video Generator State
+    const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+    const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+
+    // Initialize
+    useEffect(() => {
+        const savedKeys = localStorage.getItem('gemini_api_keys');
+        if (savedKeys) {
+            const parsed = JSON.parse(savedKeys);
+            setApiKeysState(parsed);
+            setApiKeys(parsed);
         }
-    } catch (e) {
-        console.warn("Failed to access process.env", e);
-    }
 
-    // Jika tidak ada kunci pengguna DAN tidak ada kunci sistem, buka modal secara otomatis.
-    if (apiKeyManager.getUserApiKeys().length === 0 && !hasSystemKey) {
-        setIsApiKeyModalOpen(true);
-    }
-  }, []);
+        // Check system theme
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            setTheme('dark');
+        }
+    }, []);
 
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      try { localStorage.setItem('theme', 'dark'); } catch(e){}
-    } else {
-      document.documentElement.classList.remove('dark');
-      try { localStorage.setItem('theme', 'light'); } catch(e){}
-    }
-  }, [theme]);
+    useEffect(() => {
+        document.documentElement.className = theme;
+    }, [theme]);
 
-  // Effect for cycling story loading messages
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isGeneratingStory) {
-        setStoryLoadingMsg(STORY_LOADING_MESSAGES[Math.floor(Math.random() * STORY_LOADING_MESSAGES.length)]);
-        interval = setInterval(() => {
-            setStoryLoadingMsg(prev => {
-                const currentIndex = STORY_LOADING_MESSAGES.indexOf(prev);
-                const nextIndex = (currentIndex + 1) % STORY_LOADING_MESSAGES.length;
-                return STORY_LOADING_MESSAGES[nextIndex];
-            });
-        }, 3000); // Ganti pesan setiap 3 detik
-    }
-    return () => {
-        if (interval) clearInterval(interval);
+    // Funny Message Interval
+    useEffect(() => {
+        let interval: ReturnType<typeof setInterval>;
+        if (isGeneratingStory) {
+            setLoadingMessage(FUNNY_MESSAGES[Math.floor(Math.random() * FUNNY_MESSAGES.length)]);
+            interval = setInterval(() => {
+                const randomIndex = Math.floor(Math.random() * FUNNY_MESSAGES.length);
+                setLoadingMessage(FUNNY_MESSAGES[randomIndex]);
+            }, 2500);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isGeneratingStory]);
+
+    // Handlers
+    const handleThemeToggle = () => setTheme(theme === 'light' ? 'dark' : 'light');
+    
+    const handleApiKeysSave = (keys: string[]) => {
+        setApiKeysState(keys);
+        setApiKeys(keys);
+        localStorage.setItem('gemini_api_keys', JSON.stringify(keys));
+        setShowApiKeyModal(false);
     };
-  }, [isGeneratingStory]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
-
-  const handleApiError = useCallback((err: any) => {
-    console.error("API Error:", err);
-    
-    const errorMessage = err?.message || "";
-    const isQuotaError = errorMessage.includes("429") || 
-                        errorMessage.toLowerCase().includes("quota") || 
-                        errorMessage.includes("RESOURCE_EXHAUSTED");
-    
-    setError(errorMessage || "Terjadi kesalahan yang tidak terduga");
-
-    if (err.name === "AllApiKeysFailedError" || isQuotaError) {
-        setIsApiKeyModalOpen(true);
-        if (isQuotaError) {
-             setError("Semua kuota kunci API sistem atau pengguna telah habis. Silakan masukkan kunci API baru.");
+    const handleGenreChange = async (genre: Genre) => {
+        setSelectedGenre(genre);
+        setIsLoadingIdeas(true);
+        try {
+            const newIdeas = await generateStoryIdeas(genre.name);
+            setStoryIdeas(newIdeas);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsLoadingIdeas(false);
         }
-    }
-  }, []);
+    };
 
-  const loadIdeas = useCallback(async (genre: string) => {
-    setIsLoadingIdeas(true);
-    setError(null);
-    try {
-      const ideas = await getInitialIdeas(genre, INITIAL_IDEAS_COUNT);
-      setStoryIdeas(ideas.map((text, index) => ({ id: `idea-${Date.now()}-${index}`, text })));
-    } catch (err) {
-      handleApiError(err);
-    } finally {
-      setIsLoadingIdeas(false);
-    }
-  }, [handleApiError]);
+    const handleSelectIdea = (idea: StoryIdea) => {
+        setStoryText(prev => prev ? `${prev}\n\n${idea.text}` : idea.text);
+    };
 
-  useEffect(() => {
-    loadIdeas(selectedGenre.name);
-  }, [selectedGenre, loadIdeas]);
-
-  const handleSelectIdea = (idea: StoryIdea) => {
-    setStoryText(prev => {
-        const newText = prev ? `${prev} ${idea.text}` : idea.text;
-        // Trigger dynamic suggestions based on new text
-        if (debounceTimeout.current) {
-            clearTimeout(debounceTimeout.current);
+    const handlePolishStory = async () => {
+        if (!storyText) return;
+        setIsPolishing(true);
+        try {
+            const polished = await polishStoryText(storyText);
+            setStoryText(polished);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal memoles cerita.');
+        } finally {
+            setIsPolishing(false);
         }
-        debounceTimeout.current = window.setTimeout(() => {
-            refreshIdeasBasedOnText(newText);
-        }, 2000);
-        return newText;
-    });
-  };
+    };
 
-  const refreshIdeasBasedOnText = async (text: string) => {
-      if (!text || text.length < 20) return;
-      setIsLoadingIdeas(true);
-      try {
-          const newIdeas = await getNewIdeasFromText(selectedGenre.name, text, 4);
-          setStoryIdeas(prev => {
-              // Keep some old, add new to top
-              const mixed = [...newIdeas.map((t, i) => ({ id: `dyn-${Date.now()}-${i}`, text: t })), ...prev.slice(0, 12)];
-              return mixed.slice(0, 16);
-          });
-      } catch (e) {
-          console.warn("Failed to refresh dynamic ideas", e);
-      } finally {
-          setIsLoadingIdeas(false);
-      }
-  };
+    const handleGenerateStory = async () => {
+        setIsGeneratingStory(true);
+        setGeneratedImages([]);
+        
+        try {
+            const story = await generateFullStory(storyText, selectedGenre.name, characterGender);
+            setFullStory(story);
+            
+            // Pass character details to ensure consistency in prompts
+            const genderStr = characterGender === 'male' ? 'Male' : characterGender === 'female' ? 'Female' : 'Character';
+            const fullCharacterDesc = `${genderStr}. ${characterText}`.trim();
 
-  const handleDismissIdea = async (ideaToDismiss: StoryIdea) => {
-    const newIdeas = storyIdeas.filter(idea => idea.id !== ideaToDismiss.id);
-    setStoryIdeas(newIdeas);
-    
-    try {
-      const newIdeaText = await getNewIdea(selectedGenre.name, newIdeas.map(i => i.text));
-      setStoryIdeas(prev => [...prev, { id: `new-${Date.now()}`, text: newIdeaText }]);
-    } catch (err) {
-       console.warn("Failed to fetch replacement idea", err);
-    }
-  };
+            const scenes = await generateStoryScenes(story, fullCharacterDesc);
+            setSceneNarrations(scenes.map(s => s.narration));
+            
+            const initialImages: GeneratedImage[] = scenes.map((s, i) => ({
+                id: `img-${i}`,
+                prompt: s.imagePrompt,
+                src: null,
+                isLoading: true 
+            }));
+            setGeneratedImages(initialImages);
+            setView('storybook');
+            setIsGeneratingStory(false);
 
-  const handlePolishStory = async () => {
-    if (!storyText.trim()) return;
-    setIsPolishing(true);
-    setError(null);
-    try {
-      const polished = await polishStory(storyText, selectedGenre.name);
-      setStoryText(polished);
-    } catch (err) {
-      handleApiError(err);
-    } finally {
-      setIsPolishing(false);
-    }
-  };
+            for (let i = 0; i < scenes.length; i++) {
+                try {
+                    // Add delay to prevent XHR errors from congestion
+                    // Increased delay to 30s to prevent 429 errors (Rate Limits)
+                    if (i > 0) await new Promise(r => setTimeout(r, 30000));
 
-  const handleGenerateStory = async () => {
-    if (!storyText.trim()) return;
-    setIsGeneratingStory(true);
-    setError(null);
-    setActiveView('storybook'); // Switch immediately to show loading state
-    
-    try {
-      // 1. Generate Full Story
-      const story = await generateFullStory(storyText, selectedGenre.name, characterGender);
-      setFullStory(story);
+                    // We pass true for 'enhanceQuality' to ensure head-to-toe/consistent rendering
+                    const base64 = await generateImage(scenes[i].imagePrompt, imageAspectRatio);
+                    setGeneratedImages(prev => {
+                        const newImages = [...prev];
+                        newImages[i] = {
+                            ...newImages[i],
+                            src: base64,
+                            isLoading: false
+                        };
+                        return newImages;
+                    });
+                } catch (err) {
+                    console.error(`Failed to generate image ${i+1}`, err);
+                    setGeneratedImages(prev => {
+                        const newImages = [...prev];
+                        newImages[i] = {
+                            ...newImages[i],
+                            isLoading: false 
+                        };
+                        return newImages;
+                    });
+                }
+            }
 
-      // 2. Extract Scenes & Narrations
-      const scenes = await generateStoryScenes(story);
-      setSceneNarrations(scenes.map(s => s.narration));
-      const prompts = scenes.map(s => s.imagePrompt);
-      setImagePrompts(prompts);
-      
-      // 3. Generate Character Profile (if needed for consistent prompting)
-      const charProfile = await generateCharacterProfile(story, characterGender);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal membuat cerita: ' + (e as Error).message);
+            setIsGeneratingStory(false);
+        }
+    };
 
-      // 4. Generate Images
-      setGeneratedImages(prompts.map((p, i) => ({ id: `img-${i}`, prompt: p, src: null, isLoading: true })));
-      
-      // Generate images in parallel
-      prompts.forEach(async (prompt, index) => {
-          try {
-              // Use uploaded character image if available, otherwise use generated profile text
-              const charInfo = characterImage ? [characterImage] : charProfile;
-              if (characterImage && animalImage) {
-                   // If both exist, passing both might be complex for simple array, 
-                   // strictly the service takes CharacterImageData[] or string.
-                   // For now let's stick to main character image + text description
-                   // Or we can modify service to accept multiple images.
-                   // Let's pass array of images if supported.
-                   // The current service supports CharacterImageData[]
-                   // So we can pass both.
-                   // (charInfo as any[]).push(animalImage);
-              }
+    const handleRegenerateImage = async (imageToRegen: GeneratedImage) => {
+        const index = generatedImages.findIndex(img => img.id === imageToRegen.id);
+        if (index === -1) return;
 
-              const src = await generateImage(
-                  prompt, 
-                  animalImage ? [characterImage!, animalImage] : (characterImage ? [characterImage] : charProfile), 
-                  imageAspectRatio, 
-                  characterGender
-                );
-              
-              setGeneratedImages(prev => prev.map((img, i) => i === index ? { ...img, src, isLoading: false } : img));
-          } catch (e) {
-              console.error(`Failed to generate image ${index}`, e);
-              setGeneratedImages(prev => prev.map((img, i) => i === index ? { ...img, isLoading: false } : img));
-          }
-      });
+        setGeneratedImages(prev => {
+            const newImages = [...prev];
+            newImages[index] = { ...newImages[index], isLoading: true };
+            return newImages;
+        });
 
-    } catch (err) {
-      handleApiError(err);
-      setActiveView('wizard'); // Go back on critical error
-    } finally {
-      setIsGeneratingStory(false);
-    }
-  };
+        try {
+            const base64 = await generateImage(imageToRegen.prompt, imageAspectRatio);
+            setGeneratedImages(prev => {
+                const newImages = [...prev];
+                newImages[index] = { ...newImages[index], src: base64, isLoading: false };
+                return newImages;
+            });
+        } catch (error) {
+             console.error("Regen failed", error);
+             setGeneratedImages(prev => {
+                const newImages = [...prev];
+                newImages[index] = { ...newImages[index], isLoading: false };
+                return newImages;
+            });
+        }
+    };
 
-  const handleRegenerateImage = async (imageToRegen: GeneratedImage) => {
-      const index = generatedImages.findIndex(img => img.id === imageToRegen.id);
-      if (index === -1) return;
-
-      setGeneratedImages(prev => prev.map((img, i) => i === index ? { ...img, src: null, isLoading: true } : img));
-      
-      try {
-          const charProfile = characterText || "Consistent character"; // Fallback
-          const src = await generateImage(
-              imageToRegen.prompt, 
-              animalImage && characterImage ? [characterImage, animalImage] : (characterImage ? [characterImage] : charProfile), 
-              imageAspectRatio, 
-              characterGender,
-              "Different angle, dynamic pose"
-            );
-          setGeneratedImages(prev => prev.map((img, i) => i === index ? { ...img, src, isLoading: false } : img));
-      } catch (err) {
-          handleApiError(err);
-          setGeneratedImages(prev => prev.map((img, i) => i === index ? { ...img, isLoading: false } : img));
-      }
-  };
-
-  const handleDownloadAudio = async () => {
-      if (!fullStory) return;
-      setIsGeneratingAudio(true);
-      try {
-          const cleanNarration = await extractNarrationFromStory(fullStory);
-          const base64Audio = await generateStoryAudio(cleanNarration, selectedVoice);
-          
-          const audioBytes = decodeBase64(base64Audio);
-          const wavBlob = pcmToWavBlob(audioBytes, 24000, 1, 16);
-          
-          const url = URL.createObjectURL(wavBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `cerita_emhatech_${Date.now()}.wav`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-      } catch (err) {
-          handleApiError(err);
-      } finally {
-          setIsGeneratingAudio(false);
-      }
-  };
-
-  const handleDownloadImages = async () => {
+    const handleDownloadImages = async () => {
       const validImages = generatedImages.filter(img => img.src);
       if (validImages.length === 0) return;
 
       const zip = new JSZip();
-      
+      let storyContent = `JUDUL: CERITA OLEH EMHATECH AI\n\nCERITA LENGKAP:\n${fullStory}\n\n---\n\nDETAIL ADEGAN (8 SCENE):\n\n`;
+      generatedImages.forEach((img, i) => {
+          const narration = sceneNarrations[i] || "";
+          storyContent += `ADEGAN ${i + 1}:\nVisual Prompt: ${img.prompt}\nNarasi: ${narration}\n\n`;
+      });
+      zip.file("cerita_dan_narasi.txt", storyContent);
+
       validImages.forEach((img, i) => {
           const data = img.src!.split(',')[1];
           zip.file(`adegan_${i + 1}.jpg`, data, { base64: true });
@@ -365,301 +278,319 @@ const App: React.FC = () => {
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = "ilustrasi_cerita_emhatech.zip";
+      a.download = "terimakasih-emhatech-ganteng.zip";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-  };
+    };
 
-  // --- Affiliate / UGC Handlers ---
+    const handleDownloadAudio = async () => {
+        const textToSpeak = sceneNarrations.join('\n\n') || fullStory;
+        if (!textToSpeak.trim()) {
+            alert('Tidak ada cerita untuk dijadikan audio.');
+            return;
+        }
 
-  const handleGenerateAffiliateContent = async (useCharacter: boolean, useProduct: boolean) => {
-      if (!affiliateScenario) return;
-      if (!affiliateImages[0] && !affiliateImages[1]) {
-          setError("Harap unggah setidaknya gambar Karakter atau Produk.");
-          return;
-      }
-      
-      setIsGeneratingAffiliate(true);
-      setError(null);
-      
-      // Reset previous results
-      setAffiliateGeneratedImages(Array(7).fill(null));
-      setAffiliateVideoJsons([]);
+        setIsGeneratingAudio(true);
+        try {
+            const base64Audio = await generateSpeech(textToSpeak, selectedVoice);
+            const pcmData = decodeBase64(base64Audio);
+            const wavBlob = pcmToWavBlob(pcmData, 24000, 1, 16);
+            
+            const url = URL.createObjectURL(wavBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cerita-emhatech-${Date.now()}.wav`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal membuat audio: ' + (e as Error).message);
+        } finally {
+            setIsGeneratingAudio(false);
+        }
+    };
 
-      try {
-        const charImg = useCharacter ? affiliateImages[0] : null;
-        const prodImg = useProduct ? affiliateImages[1] : null;
+    const handleDownloadUGC = async () => {
+        const validImages = ugcGeneratedImages.filter((img): img is GeneratedImage => img !== null && img.src !== null);
+        if (validImages.length === 0 && videoJsons.length === 0) return;
 
-        const result = await generateAffiliatePackage(
-            charImg, 
-            prodImg, 
-            affiliateScenario,
-            affiliateLanguage
-        );
+        const zip = new JSZip();
+        let textContent = `SKENARIO UGC:\n${ugcScenario}\n\n---\n\n`;
+        videoJsons.forEach((json, index) => {
+            if (json) {
+                textContent += `ADEGAN ${index + 1} (JSON):\n${json}\n\n`;
+            }
+        });
+        zip.file("ugc_scripts_dan_prompts.txt", textContent);
+
+        ugcGeneratedImages.forEach((img, i) => {
+            if (img && img.src) {
+                const data = img.src.split(',')[1];
+                zip.file(`ugc_adegan_${i + 1}.jpg`, data, { base64: true });
+            }
+        });
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "terimakasih-emhatech-ganteng.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleGenerateUGC = async (useCharacter: boolean, useProduct: boolean) => {
+        setIsGeneratingUGC(true);
+        setUgcGeneratedImages(Array(7).fill(null));
+        setVideoJsons([]);
         
-        // Update state incrementally or all at once
-        setAffiliateVideoJsons(result.videoJson.map(j => JSON.stringify(j, null, 2)));
-        setAffiliateGeneratedImages(result.images.map((src, i) => ({
-            id: `aff-${i}`,
-            prompt: result.videoJson[i]?.image_prompt || "UGC Content",
-            src,
-            isLoading: false
-        })));
+        try {
+            // 1. Generate Scripts (Returns Array of Objects)
+            const scripts = await generateUGCScripts(ugcScenario, ugcLanguage);
+            
+            // Convert objects back to strings for display purposes in JsonDisplay
+            setVideoJsons(scripts.map(s => JSON.stringify(s, null, 2)));
+            
+            // 2. Generate Images for each script
+            const initialImages: GeneratedImage[] = scripts.map((s, i) => {
+                return {
+                    id: `ugc-${i}`,
+                    prompt: s.visual_prompt,
+                    src: null,
+                    isLoading: true
+                };
+            });
+            setUgcGeneratedImages(initialImages);
 
-      } catch (err) {
-          handleApiError(err);
-      } finally {
-          setIsGeneratingAffiliate(false);
-      }
-  };
+            for(let i = 0; i < scripts.length; i++) {
+                 try {
+                    // Add delay - Increased to 30s to prevent 429
+                    if (i > 0) await new Promise(r => setTimeout(r, 30000));
+                    
+                    // Enhance UGC prompts for better results if needed
+                    const finalPrompt = `${initialImages[i].prompt}, high quality, photorealistic, 8k, detailed`;
+                    const base64 = await generateImage(finalPrompt, '9:16');
+                    
+                    setUgcGeneratedImages(prev => {
+                        const newImgs = [...prev];
+                        if(newImgs[i]) {
+                             newImgs[i] = { ...newImgs[i]!, src: base64, isLoading: false };
+                        }
+                        return newImgs;
+                    });
+                 } catch (err) {
+                    console.error(`Failed UGC image ${i}`, err);
+                     setUgcGeneratedImages(prev => {
+                        const newImgs = [...prev];
+                        if(newImgs[i]) newImgs[i] = { ...newImgs[i]!, isLoading: false };
+                        return newImgs;
+                    });
+                 }
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Gagal membuat UGC content: ' + (e as Error).message);
+        } finally {
+            setIsGeneratingUGC(false);
+        }
+    };
 
-  const handleDownloadAffiliateImages = async () => {
-      const validImages = affiliateGeneratedImages.filter(img => img && img.src);
-      if (validImages.length ===0) return;
-      
-      const zip = new JSZip();
-      validImages.forEach((img, i) => {
-          if (img && img.src) {
-            const data = img.src.split(',')[1];
-            zip.file(`ugc_scene_${i + 1}.jpg`, data, { base64: true });
-          }
-      });
-      
-      // Also save prompts
-      const prompts = affiliateVideoJsons.join('\n\n---\n\n');
-      zip.file("prompts_dan_skrip.txt", prompts);
+    const handleGetLyrics = async () => {
+        setIsFetchingLyrics(true);
+        setOriginalLyrics('');
+        setLyricSources([]);
+        try {
+            const { lyrics, sources } = await generateLyrics(youtubeUrl);
+            setOriginalLyrics(lyrics);
+            setLyricSources(sources);
+        } catch (e) {
+            console.error(e);
+            setOriginalLyrics('Gagal mengambil lirik. Silakan coba lagi.');
+        } finally {
+            setIsFetchingLyrics(false);
+        }
+    };
 
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = "makasih emha ganteng.zip";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-  };
+    const handleTranslateLyrics = async () => {
+        if (!originalLyrics) return;
+        setIsTranslatingLyrics(true);
+        setTranslatedLyrics(null);
+        try {
+            const translated = await translateLyrics(originalLyrics, selectedLyricLanguage);
+            setTranslatedLyrics(translated);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal menerjemahkan lirik.');
+        } finally {
+            setIsTranslatingLyrics(false);
+        }
+    };
 
-  // --- Music Lyric Handlers ---
-
-  const handleGetLyrics = async () => {
-      if (!youtubeUrl) return;
-      setIsFetchingLyrics(true);
-      setOriginalLyrics('');
-      setTranslatedLyrics(null);
-      setLyricSources([]);
-      setError(null);
-      
-      try {
-          const data = await getLyricsFromYoutube(youtubeUrl);
-          setOriginalLyrics(data.lyrics);
-          setLyricSources(data.sources);
-      } catch (err) {
-          handleApiError(err);
-      } finally {
-          setIsFetchingLyrics(false);
-      }
-  };
-
-  const handleTranslateLyrics = async () => {
-      if (!originalLyrics) return;
-      setIsTranslatingLyrics(true);
-      setError(null);
-      
-      try {
-          const translated = await translateLyrics(originalLyrics, selectedLyricLanguage);
-          setTranslatedLyrics(translated);
-      } catch (err) {
-          handleApiError(err);
-      } finally {
-          setIsTranslatingLyrics(false);
-      }
-  };
-
-  // --- Video Generator Handlers ---
-
-  const handleGenerateVideo = async (prompt: string, aspectRatio: AspectRatio, model: VeoModel, resolution: VideoResolution, image: CharacterImageData | null) => {
-      setIsGeneratingVideo(true);
-      setGeneratedVideoUrl(null);
-      setError(null);
-
-      try {
-          const url = await generateVeoVideo(prompt, aspectRatio, model, resolution, image);
-          setGeneratedVideoUrl(url);
-      } catch (err) {
-          handleApiError(err);
-      } finally {
-          setIsGeneratingVideo(false);
-      }
-  };
-
-  // --- API Key Handling ---
-
-  const handleSaveApiKeys = (newKeys: string[]) => {
-      apiKeyManager.setUserApiKeys(newKeys);
-      setCurrentUserApiKeys(newKeys);
-      setIsApiKeyModalOpen(false);
-      // Retry loading ideas if we are on wizard and they are empty
-      if (activeView === 'wizard' && storyIdeas.length === 0) {
-          loadIdeas(selectedGenre.name);
-      }
-      setError(null); // Clear any persistent errors
-  };
+    const handleGenerateVideo = async (prompt: string, ratio: AspectRatio, model: VeoModel, res: VideoResolution, img: CharacterImageData | null) => {
+        setIsGeneratingVideo(true);
+        setGeneratedVideoUrl(null);
+        try {
+            const url = await generateVeoVideo(prompt, model, ratio, res, img?.base64);
+            setGeneratedVideoUrl(url);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal membuat video: ' + (e as Error).message);
+        } finally {
+            setIsGeneratingVideo(false);
+        }
+    };
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 font-sans transition-colors duration-300">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Header theme={theme} onThemeToggle={toggleTheme} onApiKeySettingsClick={() => setIsApiKeyModalOpen(true)} />
-
-        {error && (
-          <div className="bg-red-100 dark:bg-red-900/50 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg relative animate-fade-in" role="alert">
-            <strong className="font-bold block sm:inline">Terjadi Kesalahan: </strong>
-            <span className="block sm:inline">{error}</span>
-            <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setError(null)}>
-              <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
-            </span>
-          </div>
-        )}
-
-        <nav className="flex flex-wrap justify-center gap-2 sm:gap-4 bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <TabButton name="Generator Cerita" active={activeView === 'wizard' || activeView === 'storybook'} onClick={() => setActiveView('wizard')} />
-            <TabButton name="UGC IMG & Prompt" active={activeView === 'imageAffiliate'} onClick={() => setActiveView('imageAffiliate')} />
-            <TabButton name="Lirik Musik" active={activeView === 'musicLyric'} onClick={() => setActiveView('musicLyric')} />
-            <TabButton name="Video Veo" active={activeView === 'videoGenerator'} onClick={() => setActiveView('videoGenerator')} />
-            <TabButton name="About" active={activeView === 'about'} onClick={() => setActiveView('about')} />
-        </nav>
-
-        <main className="transition-all duration-500">
-          {activeView === 'wizard' && (
-            <StoryWizard
-              genres={GENRES}
-              selectedGenre={selectedGenre}
-              onGenreChange={setSelectedGenre}
-              storyIdeas={storyIdeas}
-              isLoadingIdeas={isLoadingIdeas}
-              onSelectIdea={handleSelectIdea}
-              storyText={storyText}
-              onStoryTextChange={setStoryText}
-              onDismissIdea={handleDismissIdea}
-              isStoryReady={storyText.length > 20}
-              onGenerateStory={handleGenerateStory}
-              isGeneratingStory={isGeneratingStory}
-              onPolishStory={handlePolishStory}
-              isPolishing={isPolishing}
-              characterImage={characterImage}
-              onCharacterImageChange={setCharacterImage}
-              onCharacterTextChange={setCharacterText}
-              characterText={characterText}
-              characterGender={characterGender}
-              onCharacterGenderChange={setCharacterGender}
-              animalImage={animalImage}
-              onAnimalImageChange={setAnimalImage}
-              imageAspectRatio={imageAspectRatio}
-              onImageAspectRatioChange={setImageAspectRatio}
-            />
-          )}
-
-          {activeView === 'storybook' && (
-            <StorybookView 
-                fullStory={fullStory}
-                generatedImages={generatedImages}
-                isGeneratingAudio={isGeneratingAudio}
-                onDownloadAudio={handleDownloadAudio}
-                onDownloadImages={handleDownloadImages}
-                onRegenerateImage={handleRegenerateImage}
-                selectedVoice={selectedVoice}
-                onVoiceChange={setSelectedVoice}
-                voiceOptions={VOICE_OPTIONS}
-                sceneNarrations={sceneNarrations}
-            />
-          )}
-
-          {activeView === 'imageAffiliate' && (
-              <ImageAffiliateView 
-                  baseImages={affiliateImages}
-                  onBaseImageChange={(img, idx) => {
-                      const newImgs = [...affiliateImages];
-                      newImgs[idx] = img;
-                      setAffiliateImages(newImgs);
-                  }}
-                  isGenerating={isGeneratingAffiliate}
-                  onGenerate={handleGenerateAffiliateContent}
-                  generatedImages={affiliateGeneratedImages}
-                  videoJsons={affiliateVideoJsons}
-                  onDownloadAll={handleDownloadAffiliateImages}
-                  scenario={affiliateScenario}
-                  onScenarioChange={setAffiliateScenario}
-                  languages={UGC_LANGUAGES}
-                  selectedLanguage={affiliateLanguage}
-                  onLanguageChange={setAffiliateLanguage}
-              />
-          )}
-
-          {activeView === 'musicLyric' && (
-              <MusicLyricView 
-                  youtubeUrl={youtubeUrl}
-                  onYoutubeUrlChange={setYoutubeUrl}
-                  onGetLyrics={handleGetLyrics}
-                  isFetchingLyrics={isFetchingLyrics}
-                  originalLyrics={originalLyrics}
-                  onOriginalLyricsChange={setOriginalLyrics}
-                  lyricSources={lyricSources}
-                  onTranslateLyrics={handleTranslateLyrics}
-                  isTranslatingLyrics={isTranslatingLyrics}
-                  translatedLyrics={translatedLyrics}
-                  languages={LYRIC_LANGUAGES}
-                  selectedLanguage={selectedLyricLanguage}
-                  onLanguageChange={setSelectedLyricLanguage}
-              />
-          )}
-
-          {activeView === 'videoGenerator' && (
-              <VideoGeneratorView 
-                  isGenerating={isGeneratingVideo}
-                  onGenerate={handleGenerateVideo}
-                  videoUrl={generatedVideoUrl}
-                  onReset={() => setGeneratedVideoUrl(null)}
-              />
-          )}
-
-          {activeView === 'about' && <AboutView />}
-        </main>
-
-        <ApiKeyModal 
-            isOpen={isApiKeyModalOpen}
-            currentApiKeys={currentUserApiKeys}
-            onClose={() => setIsApiKeyModalOpen(false)}
-            onSave={handleSaveApiKeys}
-        />
-
-        {/* Storybook Loading Popup */}
-        {isGeneratingStory && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border-2 border-cyan-500/50 transform scale-100 transition-transform">
-              <div className="relative mb-8">
-                  <div className="absolute inset-0 flex items-center justify-center animate-ping opacity-30">
-                      <div className="h-20 w-20 bg-cyan-500 rounded-full"></div>
-                  </div>
-                  <div className="absolute inset-0 flex items-center justify-center animate-ping animation-delay-500 opacity-20">
-                      <div className="h-24 w-24 bg-cyan-400 rounded-full"></div>
-                  </div>
-                  <Spinner className="h-20 w-20 text-cyan-600 dark:text-cyan-400 mx-auto relative z-10" />
-              </div>
-              <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 to-blue-600 dark:from-cyan-400 dark:to-blue-400 mb-4 animate-pulse">
-                  Sedang Berkarya...
-              </h3>
-              <p className="text-xl text-slate-700 dark:text-slate-300 font-medium min-h-[4rem] flex items-center justify-center leading-relaxed">
-                  "{storyLoadingMsg}"
-              </p>
+    <div className={`min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 font-sans flex flex-col relative`}>
+      
+      {/* Funny Loading Overlay */}
+      {isGeneratingStory && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border-2 border-cyan-500 transform scale-100 transition-transform">
+            <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center justify-center animate-ping opacity-20">
+                    <div className="h-20 w-20 bg-cyan-500 rounded-full"></div>
+                </div>
+                <Spinner className="h-20 w-20 text-cyan-600 dark:text-cyan-400 mx-auto relative z-10" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4 animate-pulse">
+                Sedang Merangkai Cerita...
+            </h3>
+            <div className="bg-cyan-50 dark:bg-cyan-900/30 p-4 rounded-xl border border-cyan-100 dark:border-cyan-800">
+                <p className="text-lg text-cyan-700 dark:text-cyan-300 font-medium">
+                   "{loadingMessage}"
+                </p>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-      </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
+            <Header 
+                theme={theme} 
+                onThemeToggle={handleThemeToggle} 
+                onApiKeySettingsClick={() => setShowApiKeyModal(true)}
+            />
+
+            <div className="flex overflow-x-auto space-x-2 border-b border-slate-200 dark:border-slate-700 mt-8 mb-8 pb-1 scrollbar-hide">
+                <TabButton name="Wizard Cerita" active={view === 'wizard'} onClick={() => setView('wizard')} />
+                <TabButton name="Buku Cerita" active={view === 'storybook'} onClick={() => setView('storybook')} disabled={generatedImages.length === 0 && view !== 'storybook'} />
+                <TabButton name="UGC & Prompt" active={view === 'imageAffiliate'} onClick={() => setView('imageAffiliate')} />
+                <TabButton name="Lirik Musik" active={view === 'musicLyric'} onClick={() => setView('musicLyric')} />
+                <TabButton name="Video Generator" active={view === 'videoGenerator'} onClick={() => setView('videoGenerator')} />
+                <TabButton name="Tentang" active={view === 'about'} onClick={() => setView('about')} />
+            </div>
+
+            <main className="min-h-[500px]">
+                {view === 'wizard' && (
+                    <StoryWizard
+                        genres={GENRES}
+                        selectedGenre={selectedGenre}
+                        onGenreChange={handleGenreChange}
+                        storyIdeas={storyIdeas}
+                        isLoadingIdeas={isLoadingIdeas}
+                        onSelectIdea={handleSelectIdea}
+                        storyText={storyText}
+                        onStoryTextChange={setStoryText}
+                        onDismissIdea={(idea) => setStoryIdeas(prev => prev.filter(i => i.id !== idea.id))}
+                        isStoryReady={storyText.trim().length > 50}
+                        onGenerateStory={handleGenerateStory}
+                        isGeneratingStory={isGeneratingStory}
+                        onPolishStory={handlePolishStory}
+                        isPolishing={isPolishing}
+                        characterImage={characterImage}
+                        onCharacterImageChange={setCharacterImage}
+                        characterText={characterText}
+                        onCharacterTextChange={setCharacterText}
+                        characterGender={characterGender}
+                        onCharacterGenderChange={setCharacterGender}
+                        animalImage={animalImage}
+                        onAnimalImageChange={setAnimalImage}
+                        imageAspectRatio={imageAspectRatio}
+                        onImageAspectRatioChange={setImageAspectRatio}
+                    />
+                )}
+
+                {view === 'storybook' && (
+                    <StorybookView
+                        fullStory={fullStory}
+                        generatedImages={generatedImages}
+                        isGeneratingAudio={isGeneratingAudio}
+                        onDownloadAudio={handleDownloadAudio}
+                        onDownloadImages={handleDownloadImages}
+                        onRegenerateImage={handleRegenerateImage}
+                        selectedVoice={selectedVoice}
+                        onVoiceChange={setSelectedVoice}
+                        voiceOptions={VOICE_OPTIONS}
+                        sceneNarrations={sceneNarrations}
+                    />
+                )}
+
+                {view === 'imageAffiliate' && (
+                    <ImageAffiliateView
+                        baseImages={ugcBaseImages}
+                        onBaseImageChange={(img, idx) => {
+                            const newImages = [...ugcBaseImages];
+                            newImages[idx] = img;
+                            setUgcBaseImages(newImages);
+                        }}
+                        isGenerating={isGeneratingUGC}
+                        onGenerate={handleGenerateUGC}
+                        generatedImages={ugcGeneratedImages}
+                        videoJsons={videoJsons}
+                        onDownloadAll={handleDownloadUGC}
+                        scenario={ugcScenario}
+                        onScenarioChange={setUgcScenario}
+                        languages={UGC_LANGUAGES}
+                        selectedLanguage={ugcLanguage}
+                        onLanguageChange={setUgcLanguage}
+                    />
+                )}
+
+                {view === 'musicLyric' && (
+                    <MusicLyricView
+                        youtubeUrl={youtubeUrl}
+                        onYoutubeUrlChange={setYoutubeUrl}
+                        onGetLyrics={handleGetLyrics}
+                        isFetchingLyrics={isFetchingLyrics}
+                        originalLyrics={originalLyrics}
+                        onOriginalLyricsChange={setOriginalLyrics}
+                        lyricSources={lyricSources}
+                        onTranslateLyrics={handleTranslateLyrics}
+                        isTranslatingLyrics={isTranslatingLyrics}
+                        translatedLyrics={translatedLyrics}
+                        languages={LYRIC_LANGUAGES}
+                        selectedLanguage={selectedLyricLanguage}
+                        onLanguageChange={setSelectedLyricLanguage}
+                    />
+                )}
+
+                {view === 'videoGenerator' && (
+                    <VideoGeneratorView
+                        isGenerating={isGeneratingVideo}
+                        onGenerate={handleGenerateVideo}
+                        videoUrl={generatedVideoUrl}
+                    />
+                )}
+
+                {view === 'about' && <AboutView />}
+            </main>
+        </div>
+
+        <Footer />
+
+        <ApiKeyModal
+            isOpen={showApiKeyModal}
+            currentApiKeys={apiKeys}
+            onClose={() => setShowApiKeyModal(false)}
+            onSave={handleApiKeysSave}
+        />
     </div>
   );
 };
-
-export default App;
